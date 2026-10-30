@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { Language, Parser } from "web-tree-sitter"
+import { extractSymbols } from "./symbols.js"
 
 const WASM_PATH = fileURLToPath(
     import.meta.resolve("tree-sitter-javascript/tree-sitter-javascript.wasm")
@@ -29,7 +30,11 @@ async function main() {
     }
 
     // print the tree
-    console.log(tree.rootNode.toString())
+    const symbols = extractSymbols(tree)
+    console.log(`Found ${symbols.length} symbol(s):`)
+    for (const s of symbols) {
+    console.log(`  ${s.kind.padEnd(8)} ${s.name} (line ${s.line})`)
+    }
 }
 
 main().catch((err) => {
