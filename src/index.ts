@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // CLI entry point. Parses argv and dispatches to the right command.
 // All the actual logic lives in scan.ts, storage.ts, symbols.ts.
 
@@ -5,7 +7,7 @@ import { scanDirectory } from "./scan.js"
 import { openDb, searchSymbols } from "./storage.js"
 import { impactAnalysis } from "./impact.js"
 
-const DB_PATH = ".archeologist/db.sqlite"
+const DB_PATH = process.env.VARCH_DB ?? ".archeologist/db.sqlite"
 
 async function main(): Promise<void> {
   const command = process.argv[2]
@@ -133,8 +135,8 @@ function printUsage(): void {
 varch — local-first code intelligence
 
 Usage:
-  varch scan [directory]    Index a directory (default: current)
-  varch search <query>      Search indexed symbols (coming next)
+  varch scan [directory]            Index a directory (default: current)
+  varch search <query>              Search indexed symbols
   varch impact <symbol> [--depth N] Show what calls a symbol (default depth: 3)
 `)
 }

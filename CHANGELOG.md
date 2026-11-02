@@ -1,15 +1,53 @@
 # Changelog
 
-## Unreleased
-- Added `scan` command: index a folder of JS/TS into SQLite
-- Added `search` command: fast symbol lookup via FTS5
-- Added `impact` command: find callers of a symbol (direct + transitive, with depth limit)
-- Parser handles both JavaScript and TypeScript grammars
-- Two-pass scan: symbols first, then call edges with confidence tiers
+All notable changes to this project will be documented in this file.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+Pre-alpha development. First public release (v0.1.0) targeted once the MCP server ships.
+
+### Added
+
+- `scan` command: indexes a folder of JS/TS files into SQLite
+- `search` command: symbol lookup via FTS5 trigram, with LIKE fallback for queries under 3 chars
+- `impact` command: finds direct and transitive callers of a symbol, with `--depth N` to control traversal depth
+- Accuracy measurement: `npm run accuracy` reports precision/recall on a hand-labeled fixture
+- `VARCH_DB` env var: allows placing the index outside the scanned directory (useful for testing on external repos)
+- Confidence tiers on edges:
+  - `exact` — reserved for future import-aware resolution (not yet emitted)
+  - `likely` — callee name uniquely matches one symbol in the index
+  - `heuristic` — callee name matches multiple symbols (ambiguous)
+  - `unknown` — callee not in the index (external call)
+- Two-pass scan: symbols extracted first, then edges resolved. Enables forward-reference resolution — a caller in `file-a.ts` can resolve a callee defined in `file-z.ts` scanned later.
+- Parser supports JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`) and TypeScript (`.ts`, `.tsx`) via separate grammars
+
+### Fixed
+
+- `varch` binary now has a shebang (`#!/usr/bin/env node`), so it runs correctly after `npm link` / `npm install -g`
+- Duplicate test runs eliminated via explicit `include` in `vitest.config.ts` (compiled test files in `dist/` were also being picked up)
 
 ### Known limitations
-- Transitive impact confidence reflects the last hop, not the weakest link in the chain
-- No import-aware resolution yet — "likely" means "unique name match," not "verified import"
 
-## 0.1.0 — (not yet released)
-- Initial project skeleton
+- **JavaScript and TypeScript only.** Python, Go, C++, and others are planned.
+- **No import-aware resolution.** `likely` means "unique name match in the index," not "verified via import graph." This is why `exact` never appears in practice yet.
+- **Transitive impact confidence reflects the last hop, not the weakest link.** A transitive caller reached via a `heuristic` edge may still display as `likely`. Fix is tracked in GitHub Issues.
+- **Test files (`.test.ts`, `.spec.ts`) are indexed alongside source.** No file-level include/exclude filtering yet. `impact` output will show test caller paths.
+- **No incremental indexing.** `scan` clears and rebuilds the full index each run.
+- **Function expressions (`const x = function() {}`) are not extracted.** Only declarations (`function x()`) and arrow functions (`const x = () => {}`) are found.
+- **Anonymous arrow functions attribute calls to the outer function.** Calls inside `setTimeout(() => { deep(); })` are attributed to the enclosing function, not the arrow itself. The arrow has no name to attach calls to.
+- **Getter/setter extraction not verified.** Chalk's `Chalk` class uses getters (`get visible()`, `get level()`, etc.). Whether these are captured by `extractSymbols` hasn't been tested on a real class with many accessors.
+- **Real-world accuracy lower than 100%.** The fixture is deliberately clean. Expect 50–75% precision on medium repos with name-based resolution.
+- **Schema changes require deleting `.archeologist/`** and re-scanning. No migration system yet.
+
+### Planned
+
+- File watcher daemon: index updates automatically on save (Lesson 4)
+- MCP server: query the local index from Cursor / Claude Desktop (Lesson 5)
+- Import-aware resolution: promotes `likely` → `exact` where provable via import graph (Lesson 6)
+- File-level filtering: `--exclude "**/*.test.ts"` or config-file equivalent
+- SCIP ingestion: consume SCIP indexes for exact resolution (Lesson 6)
+- Python support (after MCP)
+- Schema migration system (blocking for v0.1.0 public release)
+- Go port of the parser (only if real users complain about performance at scale)

@@ -1,0 +1,15 @@
+{
+  "description": "Ground truth for the accuracy fixture. Each edge is a call relationship. `confidence` is the EXPECTED tier from the tool.",
+  "edges": [
+    { "callerFile": "fixture-a.ts", "caller": "alpha",    "callee": "beta",         "confidence": "likely"    },
+    { "callerFile": "fixture-a.ts", "caller": "alpha",    "callee": "externalLib",  "confidence": "unknown"   },
+    { "callerFile": "fixture-b.ts", "caller": "beta",     "callee": "alpha",        "confidence": "likely"    },
+    { "callerFile": "fixture-b.ts", "caller": "beta",     "callee": "helper",       "confidence": "heuristic" },
+    { "callerFile": "fixture-c.ts", "caller": "process",  "callee": "helper",       "confidence": "heuristic" },
+    { "callerFile": "fixture-d.js", "caller": "walk",     "callee": "walk",         "confidence": "likely"    },
+    { "callerFile": "fixture-d.js", "caller": "odd",      "callee": "even",         "confidence": "likely"    },
+    { "callerFile": "fixture-d.js", "caller": "even",     "callee": "odd",          "confidence": "likely"    },
+    { "callerFile": "fixture-e.ts", "caller": "topLevel", "callee": "alpha",        "confidence": "likely"    },
+    { "callerFile": "fixture-e.ts", "caller": "topLevel", "callee": "process",      "confidence": "likely"    }
+  ]
+}

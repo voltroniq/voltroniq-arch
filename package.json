@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "accuracy": "tsx scripts/accuracy.ts",
     "test": "vitest run"
   },
   "author": "Navil Noor",
