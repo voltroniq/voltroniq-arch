@@ -29,7 +29,8 @@ async function cmdScan(root: string): Promise<void> {
   console.log(
     `Done in ${result.durationMs}ms. ` +
       `Files: ${result.filesIndexed} indexed, ${result.filesSkipped} skipped. ` +
-      `Symbols: ${result.symbolsIndexed}.`
+      `Symbols: ${result.symbolsIndexed}. ` +
+      `Edges: ${result.edgesIndexed}.`
   )
 }
 

@@ -288,3 +288,23 @@ export function dependencies(db: DB, symbolName: string): EdgeResult[] {
     ORDER BY e.target_symbol_name
   `).all(symbolName) as EdgeResult[]
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// findSymbolsByName
+//
+// Returns all symbols matching a name, across all files.
+// Used by edge resolution: 0 matches → unknown, 1 → likely, 2+ → heuristic.
+// ─────────────────────────────────────────────────────────────────────
+export interface SymbolRef {
+  id: number
+  file_id: number
+  name: string
+}
+
+export function findSymbolsByName(db: DB, name: string): SymbolRef[] {
+  return db.prepare(`
+    SELECT id, file_id, name
+    FROM symbols
+    WHERE name = ?
+  `).all(name) as SymbolRef[]
+}
