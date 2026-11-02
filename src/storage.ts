@@ -116,3 +116,15 @@ export function insertSymbol(
 
   return symbolId
 }
+
+/**
+ * Wipe the entire index. Used at the start of a fresh scan.
+ * Order matters: symbol_fts has no FK cascade, so we clear it first.
+ * Then `files` cascades to `symbols` automatically.
+ */
+export function clearDb(db: DB): void {
+  db.exec(`
+    DELETE FROM symbol_fts;
+    DELETE FROM files;
+  `)
+}

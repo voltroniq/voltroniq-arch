@@ -1,43 +1,45 @@
-import { readFileSync } from "node:fs"
-import { fileURLToPath } from "node:url"
-import { Language, Parser } from "web-tree-sitter"
-import { extractSymbols } from "./symbols.js"
+// CLI entry point. Parses argv and dispatches to the right command.
+// All the actual logic lives in scan.ts, storage.ts, symbols.ts.
 
-const WASM_PATH = fileURLToPath(
-    import.meta.resolve("tree-sitter-javascript/tree-sitter-javascript.wasm")
-)
+import { scanDirectory } from "./scan.js"
 
-async function main() {
-    // initializing the WASM runtime
-    await Parser.init()
+const DB_PATH = ".archeologist/db.sqlite"
 
-    // loading JS grammar
-    const Javascript = await Language.load(WASM_PATH)
+async function main(): Promise<void> {
+  const command = process.argv[2]
+  const arg = process.argv[3]
 
-    // creating the parser and attaching the grammer
-    const parser = new Parser()
-    parser.setLanguage(Javascript)
+  switch (command) {
+    case "scan":
+      await cmdScan(arg ?? ".")
+      break
+    default:
+      printUsage()
+      process.exit(1)
+  }
+}
 
-    // reading the input
-    const source = readFileSync("input.js", "utf-8")
+async function cmdScan(root: string): Promise<void> {
+  console.log(`Scanning ${root}...`)
+  const result = await scanDirectory(root, DB_PATH)
+  console.log(
+    `Done in ${result.durationMs}ms. ` +
+      `Files: ${result.filesIndexed} indexed, ${result.filesSkipped} skipped. ` +
+      `Symbols: ${result.symbolsIndexed}.`
+  )
+}
 
-    // parsing to syntax tree
-    const tree = parser.parse(source)
+function printUsage(): void {
+  console.error(`
+varch — local-first code intelligence
 
-    // if tree is null
-    if (!tree) {
-        throw new Error("Parser returned null")
-    }
-
-    // print the tree
-    const symbols = extractSymbols(tree)
-    console.log(`Found ${symbols.length} symbol(s):`)
-    for (const s of symbols) {
-    console.log(`  ${s.kind.padEnd(8)} ${s.name} (line ${s.line})`)
-    }
+Usage:
+  varch scan [directory]    Index a directory (default: current)
+  varch search <query>      Search indexed symbols (coming next)
+`)
 }
 
 main().catch((err) => {
-    console.error("Parse failed", err)
-    process.exit(1)
+  console.error("fatal:", err instanceof Error ? err.message : err)
+  process.exit(1)
 })
