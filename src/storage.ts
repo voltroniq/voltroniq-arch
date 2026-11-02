@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS edges (
   target_symbol_id INTEGER,
   -- Raw name of the callee. Always present, even when target_symbol_id is null.
   target_symbol_name TEXT NOT NULL,
+  -- Line where the call appears (1-indexed). Distinct from source_line.
+  line INTEGER NOT NULL DEFAULT 0,
   -- How confident we are in the resolution:
   --   'exact'     — resolved to a unique symbol via import/scope (future work)
   --   'likely'    — target name matched exactly one symbol in the index
@@ -203,4 +205,86 @@ function searchLike(db: DB, query: string, limit: number): SearchResult[] {
     ORDER BY s.name
     LIMIT ?
   `).all(`%${query}%`, limit) as SearchResult[]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// insertEdge
+//
+// Inserts a call edge. `targetSymbolId` may be null when the callee
+// couldn't be resolved to a specific symbol — the raw name is always
+// stored so the edge is still useful for impact analysis.
+// ─────────────────────────────────────────────────────────────────────
+export type Confidence = "exact" | "likely" | "heuristic" | "unknown"
+
+export function insertEdge(
+  db: DB,
+  sourceSymbolId: number,
+  targetSymbolName: string,
+  targetSymbolId: number | null,
+  line: number,
+  confidence: Confidence
+): void {
+  db.prepare(`
+    INSERT INTO edges (source_symbol_id, target_symbol_id, target_symbol_name, line, confidence)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(sourceSymbolId, targetSymbolId, targetSymbolName, line, confidence)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// EdgeResult — the shape returned by both dependents() and dependencies().
+// Same shape for both so CLI display code doesn't branch on direction.
+// ─────────────────────────────────────────────────────────────────────
+export interface EdgeResult {
+  source_name: string       // name of the caller
+  source_path: string       // file the caller lives in
+  source_line: number       // line the caller is defined at
+  target_name: string       // name of the callee (always present)
+  target_id: number | null  // resolved callee id, or null if unresolved
+  confidence: Confidence
+  call_line: number         // line the call appears at
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// dependents — "what calls this symbol?"
+// Queries edges by target_symbol_name (not id, so unresolved edges
+// still surface — you get "unknown caller calls openDb" too).
+// ─────────────────────────────────────────────────────────────────────
+export function dependents(db: DB, symbolName: string): EdgeResult[] {
+  return db.prepare(`
+    SELECT
+      src.name AS source_name,
+      f.path   AS source_path,
+      src.line AS source_line,
+      e.target_symbol_name AS target_name,
+      e.target_symbol_id   AS target_id,
+      e.confidence         AS confidence,
+      e.line               AS call_line
+    FROM edges e
+    JOIN symbols src ON src.id = e.source_symbol_id
+    JOIN files   f   ON f.id   = src.file_id
+    WHERE e.target_symbol_name = ?
+    ORDER BY src.name
+  `).all(symbolName) as EdgeResult[]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// dependencies — "what does this symbol call?"
+// Queries edges by the caller's name.
+// ─────────────────────────────────────────────────────────────────────
+export function dependencies(db: DB, symbolName: string): EdgeResult[] {
+  return db.prepare(`
+    SELECT
+      src.name AS source_name,
+      f.path   AS source_path,
+      src.line AS source_line,
+      e.target_symbol_name AS target_name,
+      e.target_symbol_id   AS target_id,
+      e.confidence         AS confidence,
+      e.line               AS call_line
+    FROM edges e
+    JOIN symbols src ON src.id = e.source_symbol_id
+    JOIN files   f   ON f.id   = src.file_id
+    WHERE src.name = ?
+    ORDER BY e.target_symbol_name
+  `).all(symbolName) as EdgeResult[]
 }

@@ -2,7 +2,7 @@
 // SQLite file in a temp directory, so tests never touch the real
 // .archeologist/db.sqlite and can run in parallel without colliding.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest"
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -10,6 +10,9 @@ import {
   openDb,
   insertFile,
   insertSymbol,
+  insertEdge,
+  dependents,
+  dependencies,
   searchSymbols,
   clearDb,
   type DB,
@@ -119,5 +122,95 @@ describe("storage", () => {
       n: number
     }
     expect(files.n).toBe(0)
+  })
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Edges: insert + query round-trips.
+  // `beforeEach(clearDb)` makes each test independent — no shared state,
+  // order doesn't matter, and a failure in one test can't poison another.
+  // ─────────────────────────────────────────────────────────────────────
+  describe("edges", () => {
+    beforeEach(() => {
+      clearDb(db)
+    })
+
+    it("inserts an edge and finds dependents of the target", () => {
+      // Setup: caller "theCaller" calls "theCallee" at line 3.
+      const f1 = insertFile(db, "/fake/caller.ts", "typescript")
+      const callerId = insertSymbol(db, f1, "theCaller", "function", 1)
+
+      const f2 = insertFile(db, "/fake/callee.ts", "typescript")
+      const calleeId = insertSymbol(db, f2, "theCallee", "function", 1)
+
+      insertEdge(db, callerId, "theCallee", calleeId, 3, "exact")
+
+      // dependents("theCallee") should find theCaller.
+      const results = dependents(db, "theCallee")
+      expect(results.length).toBe(1)
+      expect(results[0]!.source_name).toBe("theCaller")
+      expect(results[0]!.source_path).toBe("/fake/caller.ts")
+      expect(results[0]!.target_name).toBe("theCallee")
+      expect(results[0]!.target_id).toBe(calleeId)
+      expect(results[0]!.confidence).toBe("exact")
+      expect(results[0]!.call_line).toBe(3)
+    })
+
+    it("inserts an edge and finds dependencies of the source", () => {
+      const f = insertFile(db, "/fake/deps.ts", "typescript")
+      const callerId = insertSymbol(db, f, "theDepsCaller", "function", 1)
+      insertEdge(db, callerId, "theDepsCallee", null, 5, "heuristic")
+
+      // dependencies("theDepsCaller") should find theDepsCallee.
+      const results = dependencies(db, "theDepsCaller")
+      expect(results.length).toBe(1)
+      expect(results[0]!.target_name).toBe("theDepsCallee")
+      expect(results[0]!.target_id).toBeNull()  // unresolved — no id, but name is preserved
+      expect(results[0]!.confidence).toBe("heuristic")
+      expect(results[0]!.call_line).toBe(5)
+    })
+
+    it("preserves unresolved edges (target_id is null, name still there)", () => {
+      // Real scenario: caller calls something external, e.g. `console.log`.
+      // We don't have console.log in our index. The edge should still exist.
+      const f = insertFile(db, "/fake/unresolved.ts", "typescript")
+      const callerId = insertSymbol(db, f, "unresolvedCaller", "function", 1)
+      insertEdge(db, callerId, "someExternalLib", null, 7, "unknown")
+
+      const results = dependents(db, "someExternalLib")
+      expect(results.length).toBe(1)
+      expect(results[0]!.target_id).toBeNull()
+      expect(results[0]!.confidence).toBe("unknown")
+    })
+
+    it("returns multiple dependents of the same target", () => {
+      // Two different callers call the same function.
+      const f1 = insertFile(db, "/fake/callerA.ts", "typescript")
+      const aId = insertSymbol(db, f1, "callerA", "function", 1)
+      const f2 = insertFile(db, "/fake/callerB.ts", "typescript")
+      const bId = insertSymbol(db, f2, "callerB", "function", 1)
+
+      insertEdge(db, aId, "sharedTarget", null, 2, "likely")
+      insertEdge(db, bId, "sharedTarget", null, 4, "likely")
+
+      const results = dependents(db, "sharedTarget")
+      expect(results.length).toBe(2)
+      const sources = results.map(r => r.source_name).sort()
+      expect(sources).toEqual(["callerA", "callerB"])
+    })
+
+    it("clearDb wipes edges too", () => {
+      // The invariant: after clearDb, no edges remain.
+      const f = insertFile(db, "/fake/toClear.ts", "typescript")
+      const callerId = insertSymbol(db, f, "clearEdgeCaller", "function", 1)
+      insertEdge(db, callerId, "clearEdgeCallee", null, 1, "likely")
+
+      // Sanity: it exists before the wipe.
+      expect(dependents(db, "clearEdgeCallee").length).toBe(1)
+
+      clearDb(db)
+
+      // Gone — this is the invariant that makes `scan` idempotent.
+      expect(dependents(db, "clearEdgeCallee").length).toBe(0)
+    })
   })
 })
