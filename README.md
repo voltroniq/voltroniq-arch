@@ -1,53 +1,52 @@
 # voltroniq-arch
 
-> **Status: Pre-alpha (active development).** Parser works for single
-> JavaScript files; CLI and repository indexing coming next.
+> **Status: Pre-alpha (active development).** Parser, indexer, and search
+> work for JavaScript and TypeScript. MCP integration coming next.
 
 A local-first code intelligence tool for legacy and unfamiliar codebases.
 
 ## What works today
 
-- Tree-sitter–based parsing of a single JavaScript file
-- Extracts function declarations, classes, methods, and arrow functions
-- Ignores function-like text inside strings and comments (the regex killer)
-- Prints name, kind, and line number for each symbol
-- 5 passing tests
+- Tree-sitter–based parsing of JavaScript and TypeScript files
+- Extracts functions, classes, and methods (ignores strings/comments)
+- `scan` command: indexes an entire folder into SQLite
+- `search` command: fast symbol search via FTS5 trigram
+- 12 passing tests
 
-## What's coming
-
-- TypeScript and JSX support
-- SQLite index + `scan` command (index an entire folder)
-- `search` command (query symbols across a repo)
-- MCP server for Cursor / Claude Desktop
-
-## Try it
+## Usage
 
     git clone git@github.com:voltroniq/voltroniq-arch.git
     cd voltroniq-arch
     npm install
 
-Put a JavaScript file named `input.js` in the repo root, then run:
+    # Index a directory (creates .archeologist/db.sqlite)
+    npx tsx src/index.ts scan .
 
-    npm run dev
+    # Search indexed symbols
+    npx tsx src/index.ts search openDb
 
 Example output:
 
-    Found 3 symbol(s):
-      function hello (line 1)
-      function greet (line 5)
-      class    Foo (line 7)
+    1 result(s) for "openDb":
+      function openDb                 src/storage.ts:49
+
+## What's coming
+
+- MCP server for Cursor / Claude Desktop
+- Cross-file symbol resolution
+- Impact analysis ("what breaks if I change X?")
 
 ## Known limitations
 
-- Only reads `input.js` from the current directory (CLI arguments in the next lesson)
-- JavaScript only — TypeScript, Python, and other languages planned
-- No persistence — parses on each run, doesn't store an index
+- JavaScript and TypeScript only (Python and others planned)
+- No cross-file call graph yet — search finds definitions, not callers
+- No incremental indexing — `scan` rebuilds the full index each run
 
 ## Development
 
     npm test               # run tests
     npx tsc --noEmit       # type-check
-    npm run dev            # run the parser on ./input.js
+    npx tsx src/index.ts   # CLI
 
 ## License
 
