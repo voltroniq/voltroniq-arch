@@ -128,3 +128,57 @@ export function clearDb(db: DB): void {
     DELETE FROM files;
   `)
 }
+
+export interface SearchResult {
+  id: number
+  name: string
+  kind: string
+  line: number
+  path: string
+}
+
+/**
+ * Search indexed symbols by name. Uses FTS5 trigram for 3+ char queries,
+ * falls back to LIKE for shorter queries and on FTS5 query syntax errors.
+ */
+export function searchSymbols(
+  db: DB,
+  query: string,
+  limit = 20
+): SearchResult[] {
+  const trimmed = query.trim()
+  if (trimmed.length < 3) {
+    return searchLike(db, trimmed, limit)
+  }
+
+  // Wrap in double quotes so FTS5 treats it as a phrase — otherwise
+  // characters like "-", "&", ":" would be interpreted as query operators.
+  // Doubling embedded quotes escapes them per FTS5 syntax.
+  const ftsQuery = `"${trimmed.replace(/"/g, '""')}"`
+
+  try {
+    return db.prepare(`
+      SELECT s.id, s.name, s.kind, s.line, f.path
+      FROM symbol_fts
+      JOIN symbols s ON s.id = symbol_fts.rowid
+      JOIN files f ON f.id = s.file_id
+      WHERE symbol_fts MATCH ?
+      ORDER BY s.name
+      LIMIT ?
+    `).all(ftsQuery, limit) as SearchResult[]
+  } catch {
+    // FTS5 syntax errors, corrupted index, etc. — fall back gracefully.
+    return searchLike(db, trimmed, limit)
+  }
+}
+
+function searchLike(db: DB, query: string, limit: number): SearchResult[] {
+  return db.prepare(`
+    SELECT s.id, s.name, s.kind, s.line, f.path
+    FROM symbols s
+    JOIN files f ON f.id = s.file_id
+    WHERE s.name LIKE ?
+    ORDER BY s.name
+    LIMIT ?
+  `).all(`%${query}%`, limit) as SearchResult[]
+}
