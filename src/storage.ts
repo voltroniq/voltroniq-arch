@@ -38,6 +38,27 @@ CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts USING fts5(
   name,
   tokenize = 'trigram'
 );
+
+CREATE TABLE IF NOT EXISTS edges (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- The calling symbol. Always resolved (we know the caller by construction).
+  source_symbol_id INTEGER NOT NULL,
+  -- The called symbol. Nullable: we might know the name but not the definition.
+  target_symbol_id INTEGER,
+  -- Raw name of the callee. Always present, even when target_symbol_id is null.
+  target_symbol_name TEXT NOT NULL,
+  -- How confident we are in the resolution:
+  --   'exact'     — resolved to a unique symbol via import/scope (future work)
+  --   'likely'    — target name matched exactly one symbol in the index
+  --   'heuristic' — target name matched multiple symbols (ambiguous)
+  --   'unknown'   — target could not be resolved at all
+  confidence TEXT NOT NULL CHECK(confidence IN ('exact','likely','heuristic','unknown')),
+  FOREIGN KEY(source_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
+  FOREIGN KEY(target_symbol_id) REFERENCES symbols(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_symbol_id);
 `
 
 // ─────────────────────────────────────────────────────────────────────
@@ -124,6 +145,7 @@ export function insertSymbol(
  */
 export function clearDb(db: DB): void {
   db.exec(`
+    DELETE FROM edges;
     DELETE FROM symbol_fts;
     DELETE FROM files;
   `)
