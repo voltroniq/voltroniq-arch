@@ -1,6 +1,11 @@
 // Orchestrates a full scan: walk the directory, parse each file, store
-// symbols in SQLite. This is the glue between scanner, parser, and storage.
-// Each of those modules is simple; the integration is where the real work is.
+// symbols and edges in SQLite. This is the glue between scanner, parser,
+// and storage. Each of those modules is simple; the integration is where
+// the real work is.
+//
+// Refactored, the actual scan logic lives in scanInto(),
+// which takes an existing DB handle. scanDirectory() opens/closes a DB
+// for CLI use; scanInto() lets the daemon reuse its own connection.
 
 import { readFileSync } from "node:fs"
 import { extractSymbols } from "./symbols.js"
@@ -15,6 +20,7 @@ import {
   insertEdge,
   findSymbolsByName,
   type Confidence,
+  type DB,
 } from "./storage.js"
 
 export interface ScanResult {
@@ -26,18 +32,17 @@ export interface ScanResult {
 }
 
 /**
- * Scan `root` and write all symbols to the DB at `dbPath`.
- * Clears the existing DB first (full rebuild, not incremental).
+ * Scan `root` into an existing DB handle. Does NOT open or close the DB —
+ * the caller owns its lifecycle. Used by the daemon, which keeps one
+ * connection open for the whole process.
+ *
+ * Wipes the DB first (full rebuild, not incremental).
  */
-export async function scanDirectory(
-  root: string,
-  dbPath: string
-): Promise<ScanResult> {
+export async function scanInto(db: DB, root: string): Promise<ScanResult> {
   const startedAt = Date.now()
 
   const parsers = await loadParsers()
   const files = findSourceFiles(root)
-  const db = openDb(dbPath)
 
   clearDb(db)
 
@@ -92,7 +97,7 @@ export async function scanDirectory(
     // scanned later in pass 1.
     for (const filePath of files) {
       const fileId = fileIdByPath.get(filePath)
-      if (!fileId) continue  // file failed in pass 1 — skip
+      if (!fileId) continue // file failed in pass 1 — skip
 
       try {
         const language = languageFor(filePath)
@@ -124,9 +129,9 @@ export async function scanDirectory(
 
           if (calleeMatches.length === 1) {
             targetId = calleeMatches[0]!.id
-            confidence = "likely"  // unique match — but not import-verified
+            confidence = "likely" // unique match — but not import-verified
           } else if (calleeMatches.length > 1) {
-            confidence = "heuristic"  // ambiguous — don't guess a target
+            confidence = "heuristic" // ambiguous — don't guess a target
           }
           // 0 matches → confidence stays "unknown", targetId stays null
 
@@ -143,7 +148,6 @@ export async function scanDirectory(
   })
 
   runScan()
-  db.close()
 
   return {
     filesIndexed,
@@ -151,5 +155,24 @@ export async function scanDirectory(
     symbolsIndexed,
     edgesIndexed,
     durationMs: Date.now() - startedAt,
+  }
+}
+
+/**
+ * Scan `root` into the DB at `dbPath`. Opens the DB, delegates to
+ * scanInto(), closes the DB. Convenience wrapper for the CLI.
+ *
+ * `try/finally` guarantees the DB closes even if scanInto throws —
+ * otherwise a failed scan would leak a DB handle and lock the file.
+ */
+export async function scanDirectory(
+  root: string,
+  dbPath: string
+): Promise<ScanResult> {
+  const db = openDb(dbPath)
+  try {
+    return await scanInto(db, root)
+  } finally {
+    db.close()
   }
 }

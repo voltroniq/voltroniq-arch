@@ -3,10 +3,11 @@
 // CLI entry point. Parses argv and dispatches to the right command.
 // All the actual logic lives in scan.ts, storage.ts, symbols.ts.
 
-import { scanDirectory } from "./scan.js"
+import { scanDirectory, scanInto } from "./scan.js"
 import { openDb, searchSymbols } from "./storage.js"
 import { startServer } from "./server.js"
 import { impactAnalysis } from "./impact.js"
+import { startWatcher } from "./watcher.js"
 
 const DB_PATH = process.env.VARCH_DB ?? ".archeologist/db.sqlite"
 
@@ -137,9 +138,6 @@ async function cmdImpact(symbol: string | undefined): Promise<void> {
 async function cmdServe(): Promise<void> {
   const db = openDb(DB_PATH)
 
-  // Verify the index exists before serving. An empty DB is served
-  // fine but returns empty results, which is confusing without a
-  // hint. Fail loud.
   const fileCount = (
     db.prepare("SELECT COUNT(*) as n FROM files").get() as { n: number }
   ).n
@@ -149,20 +147,58 @@ async function cmdServe(): Promise<void> {
     process.exit(1)
   }
 
-  const server = await startServer({ db })
+  // Status object mutated by the watcher and read by /api/status.
+  const status: {
+    watcher: "starting" | "watching" | "scanning" | "stopped"
+    lastScanAt: string | null
+    scanCount: number
+    lastDurationMs: number | null
+  } = {
+    watcher: "starting",
+    lastScanAt: null,
+    scanCount: 0,
+    lastDurationMs: null,
+  }
+
+  const server = await startServer({ db, getStatus: () => status })
   console.log(`varch daemon listening on ${server.url}`)
   console.log(`  Try: curl ${server.url}/health`)
-  console.log(`  Press Ctrl+C to stop.`)
+  console.log(`  Watching for file changes... (Ctrl+C to stop)`)
 
-  // Graceful shutdown: wait for SIGINT (Ctrl+C), close the server,
-  // then close the DB. Order matters — close the server first so no
-  // new requests arrive while we're tearing down the DB.
+  const watcher = await startWatcher({
+    root: ".",
+    onChange: async () => {
+      status.watcher = "scanning"
+      const t0 = Date.now()
+      try {
+        const result = await scanInto(db, ".")
+        status.lastScanAt = new Date().toISOString()
+        status.lastDurationMs = result.durationMs
+        status.scanCount++
+        console.log(
+          `[${status.lastScanAt}] re-scan complete in ${result.durationMs}ms ` +
+            `(${result.filesIndexed} files, ${result.symbolsIndexed} symbols, ${result.edgesIndexed} edges)`
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`re-scan failed: ${msg}`)
+      } finally {
+        status.watcher = "watching"
+        void t0
+      }
+    },
+  })
+  status.watcher = "watching"
+
+  // Graceful shutdown. Order matters: close watcher first
+  // (stop producing change events), then server, then DB.
   await new Promise<void>((resolve) => {
     process.once("SIGINT", () => resolve())
     process.once("SIGTERM", () => resolve())
   })
 
   console.log("\nShutting down...")
+  await watcher.close()
   await server.close()
   db.close()
   console.log("Stopped.")

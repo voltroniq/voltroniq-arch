@@ -2,21 +2,35 @@
 // Read-only: opens a DB connection, serves queries, never writes.
 //
 // Endpoints:
-//   GET /health                     → { ok, port, files, symbols, edges }
+//   GET /health                     → { ok, files, symbols, edges }
+//   GET /api/stats                  → confidence distribution
 //   GET /api/search?q=...           → SearchResult[]
 //   GET /api/impact?name=...&depth= → ImpactResult
-//   GET /api/stats                  → counts for files/symbols/edges
+//   GET /api/status                 → daemon status (watcher state, scan count)
+//
+// Lesson 4b added /api/status. The status is provided by the caller via
+// an optional `getStatus` callback so this module stays agnostic about
+// how the daemon tracks its own state.
 
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http"
-import {
-  searchSymbols,
-  type DB,
-} from "./storage.js"
+import { searchSymbols, type DB } from "./storage.js"
 import { impactAnalysis } from "./impact.js"
+
+/**
+ * Snapshot of the daemon's current state. Populated by cmdServe,
+ * read by GET /api/status. Kept in this file so the shape is shared
+ * between server and index.ts.
+ */
+export interface ServerStatus {
+  watcher: "starting" | "watching" | "scanning" | "stopped"
+  lastScanAt: string | null
+  scanCount: number
+  lastDurationMs: number | null
+}
 
 export interface ServeOptions {
   db: DB
@@ -24,6 +38,8 @@ export interface ServeOptions {
   port?: number
   // Default 127.0.0.1 = localhost only. Do not set to 0.0.0.0.
   host?: string
+  // Optional status provider. If absent, /api/status returns a stub.
+  getStatus?: () => ServerStatus
 }
 
 export interface RunningServer {
@@ -41,17 +57,16 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
   const host = opts.host ?? "127.0.0.1"
   const port = opts.port ?? 0
 
-  // The request handler is a closure over `opts.db`. Every request
-  // sees the same connection. That's safe because better-sqlite3 is
-  // synchronous — a request either completes before another starts or
-  // waits its turn. No race conditions on the DB handle.
+  // The request handler is a closure over `opts`. Every request sees
+  // the same DB connection and the same getStatus callback. That's
+  // safe because better-sqlite3 is synchronous — a request either
+  // completes before another starts or waits its turn.
   const server = createServer((req, res) => {
     try {
-      handleRequest(opts.db, req, res)
+      handleRequest(opts.db, opts.getStatus, req, res)
     } catch (err) {
       // Last-resort catch: any error inside handler produces a 500
-      // instead of crashing the daemon. If handleRequest itself is
-      // broken, the daemon keeps running with degraded behavior.
+      // instead of crashing the daemon.
       const msg = err instanceof Error ? err.message : String(err)
       sendJson(res, 500, { error: msg })
     }
@@ -83,11 +98,11 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
 }
 
 /**
- * Route a request to the right handler. Only GET is supported —
- * this is a read-only query API.
+ * Route a request to the right handler. Only GET is supported.
  */
 function handleRequest(
   db: DB,
+  getStatus: (() => ServerStatus) | undefined,
   req: IncomingMessage,
   res: ServerResponse
 ): void {
@@ -105,6 +120,8 @@ function handleRequest(
       return handleHealth(db, res)
     case "/api/stats":
       return handleStats(db, res)
+    case "/api/status":
+      return handleStatus(getStatus, res)
     case "/api/search":
       return handleSearch(db, url, res)
     case "/api/impact":
@@ -122,13 +139,23 @@ function handleHealth(db: DB, res: ServerResponse): void {
 }
 
 function handleStats(db: DB, res: ServerResponse): void {
-  // Confidence distribution + top-level counts. Useful for
-  // dashboards and for "is my index healthy?" spot checks.
   const confidence = db
     .prepare("SELECT confidence, COUNT(*) as n FROM edges GROUP BY confidence")
     .all() as Array<{ confidence: string; n: number }>
-
   sendJson(res, 200, { confidence })
+}
+
+function handleStatus(
+  getStatus: (() => ServerStatus) | undefined,
+  res: ServerResponse
+): void {
+  // If no status provider was passed, return a clear stub rather than
+  // an error. This makes /api/status safe to call from tests or from
+  // a bare server started without a daemon.
+  if (!getStatus) {
+    return sendJson(res, 200, { status: "not tracked" })
+  }
+  sendJson(res, 200, getStatus())
 }
 
 function handleSearch(db: DB, url: URL, res: ServerResponse): void {
