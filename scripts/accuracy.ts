@@ -7,13 +7,23 @@
 //                      measures how accurately the tool maps YOUR codebase
 
 import { execSync } from "node:child_process"
-import { readFileSync, rmSync, existsSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { basename } from "node:path"
 import Database from "better-sqlite3"
 
 const FIXTURE_DIR = "testdata/accuracy"
 const LABELS_PATH = "testdata/accuracy/labels.json"
-const DB_PATH = ".archeologist/db.sqlite"
+
+// Isolated DB path. `npm run accuracy` uses this file and no other —
+// your working `.archeologist/db.sqlite` is never touched. This prevents
+// the accuracy run from clobbering your real index (which happened
+// accidentally before this fix).
+const DB_PATH = "/tmp/varch-accuracy.sqlite"
+
+// Child processes inherit env vars. Setting VARCH_DB here means the
+// `npx tsx src/index.ts scan ...` subprocess writes to the SAME path
+// this script reads from. Both sides of the pipeline stay consistent.
+process.env.VARCH_DB = DB_PATH
 
 type Confidence = "exact" | "likely" | "heuristic" | "unknown"
 
@@ -101,7 +111,6 @@ function printReport(title: string, m: Metrics, missing: string[], extra: string
 function main(): void {
   // ── 1. Reset and scan the fixture ──────────────────────────────────
   console.log("Scanning fixture...")
-  if (existsSync(".archeologist")) rmSync(".archeologist", { recursive: true })
   execSync(`npx tsx src/index.ts scan ${FIXTURE_DIR}`, { stdio: "inherit" })
 
   // ── 2. Load ground truth ──────────────────────────────────────────
