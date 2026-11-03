@@ -5,6 +5,7 @@
 
 import { scanDirectory } from "./scan.js"
 import { openDb, searchSymbols } from "./storage.js"
+import { startServer } from "./server.js"
 import { impactAnalysis } from "./impact.js"
 
 const DB_PATH = process.env.VARCH_DB ?? ".archeologist/db.sqlite"
@@ -22,6 +23,9 @@ async function main(): Promise<void> {
       break
     case "impact":
       await cmdImpact(arg)
+      break
+    case "serve":
+      await cmdServe()
       break
     default:
       printUsage()
@@ -130,6 +134,40 @@ async function cmdImpact(symbol: string | undefined): Promise<void> {
   }
 }
 
+async function cmdServe(): Promise<void> {
+  const db = openDb(DB_PATH)
+
+  // Verify the index exists before serving. An empty DB is served
+  // fine but returns empty results, which is confusing without a
+  // hint. Fail loud.
+  const fileCount = (
+    db.prepare("SELECT COUNT(*) as n FROM files").get() as { n: number }
+  ).n
+  if (fileCount === 0) {
+    db.close()
+    console.error("Index is empty. Run `varch scan .` first.")
+    process.exit(1)
+  }
+
+  const server = await startServer({ db })
+  console.log(`varch daemon listening on ${server.url}`)
+  console.log(`  Try: curl ${server.url}/health`)
+  console.log(`  Press Ctrl+C to stop.`)
+
+  // Graceful shutdown: wait for SIGINT (Ctrl+C), close the server,
+  // then close the DB. Order matters — close the server first so no
+  // new requests arrive while we're tearing down the DB.
+  await new Promise<void>((resolve) => {
+    process.once("SIGINT", () => resolve())
+    process.once("SIGTERM", () => resolve())
+  })
+
+  console.log("\nShutting down...")
+  await server.close()
+  db.close()
+  console.log("Stopped.")
+}
+
 function printUsage(): void {
   console.error(`
 varch — local-first code intelligence
@@ -138,6 +176,7 @@ Usage:
   varch scan [directory]            Index a directory (default: current)
   varch search <query>              Search indexed symbols
   varch impact <symbol> [--depth N] Show what calls a symbol (default depth: 3)
+  varch serve                       Start local HTTP daemon on ephemeral port
 `)
 }
 

@@ -13,6 +13,9 @@ Pre-alpha development. First public release (v0.1.0) targeted once the MCP serve
 - `scan` command: indexes a folder of JS/TS files into SQLite
 - `search` command: symbol lookup via FTS5 trigram, with LIKE fallback for queries under 3 chars
 - `impact` command: finds direct and transitive callers of a symbol, with `--depth N` to control traversal depth
+- `serve` command: HTTP query server on an ephemeral localhost port
+  - Endpoints: `GET /health`, `GET /api/search`, `GET /api/impact`, `GET /api/stats`
+  - Read-only; Ctrl+C exits cleanly
 - Accuracy measurement: `npm run accuracy` reports precision/recall on a hand-labeled fixture
 - `VARCH_DB` env var: allows placing the index outside the scanned directory (useful for testing on external repos)
 - Confidence tiers on edges:
@@ -40,6 +43,10 @@ Pre-alpha development. First public release (v0.1.0) targeted once the MCP serve
 - **Dynamically created methods are invisible to static analysis.** Chalk, for example, creates hundreds of style getters via `Object.defineProperty` in loops (`styles.red`, `styles.bold`, etc.). These have no static declaration — no parser can find them. Varch reports only statically-declared symbols. Verified on chalk: 38 symbols found in `source/index.js`, matching what `grep` finds and exceeding hand-verified getter/setter extraction.
 - **Real-world accuracy lower than 100%.** The fixture is deliberately clean. Expect 50–75% precision on medium repos with name-based resolution.
 - **Schema changes require deleting `.archeologist/`** and re-scanning. No migration system yet.
+- **HTTP daemon serves a stale index.** No file watcher yet — the index updates only when `varch scan .` is re-run. File watching lands in Lesson 4b.
+- **No port file.** Clients must know the URL from the daemon's stdout. Port file lands in Lesson 4c.
+- **No background/daemon mode.** `varch serve` runs in the foreground; closing the terminal stops it. Background mode lands in Lesson 4c.
+- **Concurrent scan during serve.** Running `varch scan .` while `varch serve` is active usually works (WAL mode) but can briefly lock. Avoid running both at once.
 
 ### Planned
 
