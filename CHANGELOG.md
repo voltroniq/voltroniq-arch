@@ -27,6 +27,7 @@ Pre-alpha development. First public release (v0.1.0) targeted once the MCP serve
 
 - `varch` binary now has a shebang (`#!/usr/bin/env node`), so it runs correctly after `npm link` / `npm install -g`
 - Duplicate test runs eliminated via explicit `include` in `vitest.config.ts` (compiled test files in `dist/` were also being picked up)
+- Function expressions (`const x = function() {}`) are now extracted as symbols. Async variants (`async function() {}`) work too. Only arrow functions were handled before.
 
 ### Known limitations
 
@@ -35,7 +36,6 @@ Pre-alpha development. First public release (v0.1.0) targeted once the MCP serve
 - **Transitive impact confidence reflects the last hop, not the weakest link.** A transitive caller reached via a `heuristic` edge may still display as `likely`. Fix is tracked in GitHub Issues.
 - **Test files (`.test.ts`, `.spec.ts`) are indexed alongside source.** No file-level include/exclude filtering yet. `impact` output will show test caller paths.
 - **No incremental indexing.** `scan` clears and rebuilds the full index each run.
-- **Function expressions (`const x = function() {}`) are not extracted.** Only declarations (`function x()`) and arrow functions (`const x = () => {}`) are found.
 - **Anonymous arrow functions attribute calls to the outer function.** Calls inside `setTimeout(() => { deep(); })` are attributed to the enclosing function, not the arrow itself. The arrow has no name to attach calls to.
 - **Getter/setter extraction not verified.** Chalk's `Chalk` class uses getters (`get visible()`, `get level()`, etc.). Whether these are captured by `extractSymbols` hasn't been tested on a real class with many accessors.
 - **Real-world accuracy lower than 100%.** The fixture is deliberately clean. Expect 50–75% precision on medium repos with name-based resolution.

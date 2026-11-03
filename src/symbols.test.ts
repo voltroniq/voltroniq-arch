@@ -56,6 +56,13 @@ describe("extractSymbols", () => {
     expect(symbols[0].line).toBe(1)
   })
 
+  it("finds a function expression assigned to a const", () => {
+    const symbols = getSymbols("const greet = function() { return 1 }")
+    expect(symbols.length).toBe(1)
+    expect(symbols[0]!.name).toBe("greet")
+    expect(symbols[0]!.kind).toBe("function")
+  })
+
   it("ignores function-like text inside strings and comments", () => {
     const source = `
       const msg = "function fake() {}"

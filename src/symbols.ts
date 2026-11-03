@@ -43,13 +43,21 @@ function walk(node: Node, out: Symbol[]): void {
   } else if (node.type === "variable_declarator") {
       const nameNode = node.childForFieldName("name")
       const valueNode = node.childForFieldName("value")
-      if (nameNode && valueNode?.type === "arrow_function") {
-        out.push({
-          name: nameNode.text,
-          kind: "function",
-          line: nameNode.startPosition.row + 1,
-        })
-    }
+      // Arrow functions and function expressions both create a "function"
+      // symbol when assigned to a variable. They differ only in node type:
+      //   const x = () => {}       → arrow_function
+      //   const x = function() {}  → function_expression
+      // Async variants parse the same; `async` doesn't change the type.
+      const isFunctionLike =
+          valueNode?.type === "arrow_function" ||
+          valueNode?.type === "function_expression"
+      if (nameNode && isFunctionLike) {
+          out.push({
+              name: nameNode.text,
+              kind: "function",
+              line: nameNode.startPosition.row + 1,
+          })
+      }
   }
 
   for (const child of node.namedChildren) {
