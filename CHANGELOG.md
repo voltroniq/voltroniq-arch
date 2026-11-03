@@ -37,7 +37,7 @@ Pre-alpha development. First public release (v0.1.0) targeted once the MCP serve
 - **Test files (`.test.ts`, `.spec.ts`) are indexed alongside source.** No file-level include/exclude filtering yet. `impact` output will show test caller paths.
 - **No incremental indexing.** `scan` clears and rebuilds the full index each run.
 - **Anonymous arrow functions attribute calls to the outer function.** Calls inside `setTimeout(() => { deep(); })` are attributed to the enclosing function, not the arrow itself. The arrow has no name to attach calls to.
-- **Getter/setter extraction not verified.** Chalk's `Chalk` class uses getters (`get visible()`, `get level()`, etc.). Whether these are captured by `extractSymbols` hasn't been tested on a real class with many accessors.
+- **Dynamically created methods are invisible to static analysis.** Chalk, for example, creates hundreds of style getters via `Object.defineProperty` in loops (`styles.red`, `styles.bold`, etc.). These have no static declaration — no parser can find them. Varch reports only statically-declared symbols. Verified on chalk: 38 symbols found in `source/index.js`, matching what `grep` finds and exceeding hand-verified getter/setter extraction.
 - **Real-world accuracy lower than 100%.** The fixture is deliberately clean. Expect 50–75% precision on medium repos with name-based resolution.
 - **Schema changes require deleting `.archeologist/`** and re-scanning. No migration system yet.
 
