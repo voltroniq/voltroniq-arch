@@ -1,21 +1,32 @@
 # voltroniq-arch
 
-> **Status: Pre-alpha (active development).** Parser, indexer, search, and
-> impact analysis work for JavaScript and TypeScript. MCP integration coming next.
+> **Status: Pre-alpha (active development).** Parser, indexer, search,
+> impact analysis, and the local HTTP daemon work for JavaScript and
+> TypeScript. MCP integration coming next.
 
 A local-first code intelligence tool for legacy and unfamiliar codebases.
 
 ## What works today
 
-- Tree-sitter–based parsing of JavaScript and TypeScript files
-- Extracts functions, classes, methods, and arrow functions (ignores strings/comments)
-- `scan` command: indexes an entire folder into SQLite
-- `search` command: fast symbol lookup via FTS5 trigram with LIKE fallback
-- `impact` command: find direct and transitive callers (depth-limited)
+- Tree-sitter-based parsing of JavaScript and TypeScript files
+- Extracts functions, classes, methods, arrow functions, and function expressions (ignores strings/comments)
+- `varch scan` - indexes an entire folder into SQLite
+- `varch search` - fast symbol lookup via FTS5 trigram with LIKE fallback
+- `varch impact` - find direct and transitive callers (depth-limited)
+- `varch serve` - local HTTP daemon with a file watcher (index updates on save)
+- `varch stop` / `varch status` - manage the running daemon from any terminal
 - Confidence tiers: `likely` (unique match), `heuristic` (ambiguous), `unknown` (external)
-- Two-pass scan: symbols first, then edges — resolves forward references correctly
-- 32 passing tests
+- Two-pass scan: symbols first, then edges - resolves forward references correctly
+- 33 passing tests
 - `npm run accuracy` reports precision/recall on a hand-labeled fixture (100% baseline)
+
+## Install
+
+    git clone git@github.com:voltroniq/voltroniq-arch.git
+    cd voltroniq-arch
+    npm install
+    npm run build
+    npm link        # makes `varch` available globally on your machine
 
 ## Usage
 
@@ -28,6 +39,13 @@ A local-first code intelligence tool for legacy and unfamiliar codebases.
     # Find callers of a symbol
     varch impact scanDirectory
     varch impact walk --depth 4
+
+    # Start the daemon (watches for file changes and re-indexes on save)
+    varch serve
+
+    # From another terminal: check status, stop when done
+    varch status
+    varch stop
 
 Example output:
 
@@ -42,21 +60,35 @@ Example output:
     Transitive callers (1, up to depth 3):
       [d2] builder          source/index.js:178  via applyStyle  [likely]
 
+## HTTP API
+
+When `varch serve` is running, it exposes the index as JSON on localhost:
+
+    GET /health                     - { ok, files, symbols, edges }
+    GET /api/search?q=...           - symbol search
+    GET /api/impact?name=...&depth= - impact analysis
+    GET /api/stats                  - edge confidence distribution
+    GET /api/status                 - daemon state (watcher, last scan, scan count)
+
+The daemon port is written to `.archeologist/port` on startup. Any tool can
+read that file to discover the running daemon. The process ID is written to
+`.archeologist/pid` for `varch stop` to use.
+
 ## What's coming
 
 - MCP server for Cursor / Claude Desktop
-- File watcher daemon (auto-update index on save)
-- Import-aware resolution (promotes `likely` → `exact` where provable)
+- Import-aware resolution (promotes `likely` -> `exact` where provable)
 - Python and additional language support
 
 ## Known limitations
 
 - JavaScript and TypeScript only (Python and others planned)
-- No import-aware resolution yet — "likely" means "unique name match," not "verified import"
+- No import-aware resolution yet - "likely" means "unique name match," not "verified import"
 - Transitive impact confidence reflects the last hop, not the weakest link in the chain
-- Test files (`.test.ts`, `.spec.ts`) are indexed alongside source — no file-level filtering yet
-- No incremental indexing — `scan` rebuilds the full index each run
-- `const x = function() {}` (function expression) not yet extracted; only `const x = () => {}` (arrow)
+- Test files (`.test.ts`, `.spec.ts`) are indexed alongside source - no file-level filtering yet
+- No incremental indexing - `varch scan` rebuilds the full index each run
+- `varch serve` runs in the foreground - closing the terminal stops the daemon. Use `varch stop` from another terminal to stop it without closing.
+- Polling overhead on WSL `/mnt/*` paths - move the project to `~/repos/` for faster inotify-based watching
 
 ## Development
 
@@ -80,19 +112,6 @@ To keep the index outside the target repo:
 
     VARCH_DB=~/varch-scratch.sqlite varch scan .
     VARCH_DB=~/varch-scratch.sqlite varch impact someFunction
-
-## If you're developing varch locally
-
-    git clone git@github.com:voltroniq/voltroniq-arch.git
-    cd voltroniq-arch
-    npm install
-    npm run build
-    npm link        # makes `varch` available globally on your machine
-
-Then, from any project:
-
-    varch scan .
-    varch search myFunc
 
 ## License
 
