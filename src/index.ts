@@ -5,9 +5,19 @@
 
 import { scanDirectory, scanInto } from "./scan.js"
 import { openDb, searchSymbols } from "./storage.js"
-import { startServer } from "./server.js"
 import { impactAnalysis } from "./impact.js"
+import { startServer, type ServerStatus } from "./server.js"
 import { startWatcher } from "./watcher.js"
+import {
+  writePortFile,
+  writePidFile,
+  readPortFile,
+  readPidFile,
+  cleanupDaemonFiles,
+  probeDaemon,
+  isProcessAlive,
+  STATE_DIR,
+} from "./daemon.js"
 
 const DB_PATH = process.env.VARCH_DB ?? ".archeologist/db.sqlite"
 
@@ -27,6 +37,12 @@ async function main(): Promise<void> {
       break
     case "serve":
       await cmdServe()
+      break
+    case "stop":
+      await cmdStop()
+      break
+    case "status":
+      await cmdStatus()
       break
     default:
       printUsage()
@@ -136,6 +152,15 @@ async function cmdImpact(symbol: string | undefined): Promise<void> {
 }
 
 async function cmdServe(): Promise<void> {
+  // Refuse to start if a daemon is already running in this directory.
+  // probeDaemon() also cleans up stale files from a previous crash.
+  const existing = await probeDaemon()
+  if (existing) {
+    console.error(`Daemon already running on port ${existing.port}.`)
+    console.error("Run `varch stop` first, or use a different directory.")
+    process.exit(1)
+  }
+
   const db = openDb(DB_PATH)
 
   const fileCount = (
@@ -147,13 +172,7 @@ async function cmdServe(): Promise<void> {
     process.exit(1)
   }
 
-  // Status object mutated by the watcher and read by /api/status.
-  const status: {
-    watcher: "starting" | "watching" | "scanning" | "stopped"
-    lastScanAt: string | null
-    scanCount: number
-    lastDurationMs: number | null
-  } = {
+  const status: ServerStatus = {
     watcher: "starting",
     lastScanAt: null,
     scanCount: 0,
@@ -161,15 +180,35 @@ async function cmdServe(): Promise<void> {
   }
 
   const server = await startServer({ db, getStatus: () => status })
+
+  // Write state files AFTER the server is accepting connections.
+  // That way, any tool that reads the port file and connects
+  // immediately won't hit a "connection refused" window.
+  try {
+    writePortFile(server.port)
+    writePidFile(process.pid)
+  } catch (err) {
+    // State files are how other tools find us. If we can't write them,
+    // the daemon is functionally invisible. Fail loudly rather than
+    // run in a degraded state.
+    await server.close()
+    db.close()
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`Failed to write daemon state files: ${msg}`)
+    process.exit(1)
+  }
+
   console.log(`varch daemon listening on ${server.url}`)
+  console.log(`  PID: ${process.pid}`)
+  console.log(`  Port: ${STATE_DIR}/port`)
+  console.log(`  PID:  ${STATE_DIR}/pid`)
   console.log(`  Try: curl ${server.url}/health`)
-  console.log(`  Watching for file changes... (Ctrl+C to stop)`)
+  console.log(`  Watching for file changes... (Ctrl+C or 'varch stop' to stop)`)
 
   const watcher = await startWatcher({
     root: ".",
     onChange: async () => {
       status.watcher = "scanning"
-      const t0 = Date.now()
       try {
         const result = await scanInto(db, ".")
         status.lastScanAt = new Date().toISOString()
@@ -184,14 +223,13 @@ async function cmdServe(): Promise<void> {
         console.error(`re-scan failed: ${msg}`)
       } finally {
         status.watcher = "watching"
-        void t0
       }
     },
   })
   status.watcher = "watching"
 
-  // Graceful shutdown. Order matters: close watcher first
-  // (stop producing change events), then server, then DB.
+  // Graceful shutdown on either Ctrl+C (SIGINT) or SIGTERM (from
+  // `varch stop`). Both paths must clean up the daemon files.
   await new Promise<void>((resolve) => {
     process.once("SIGINT", () => resolve())
     process.once("SIGTERM", () => resolve())
@@ -201,7 +239,103 @@ async function cmdServe(): Promise<void> {
   await watcher.close()
   await server.close()
   db.close()
+  cleanupDaemonFiles()
   console.log("Stopped.")
+}
+
+async function cmdStop(): Promise<void> {
+  const port = readPortFile()
+  const pid = readPidFile()
+
+  if (port === null && pid === null) {
+    console.error("No daemon running in this directory.")
+    process.exit(1)
+  }
+
+  // Verify the daemon is actually responding before sending signals.
+  // This prevents killing a wrong process if a stale PID got reused.
+  if (port !== null) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`, {
+        signal: AbortSignal.timeout(1000),
+      })
+      if (!res.ok) {
+        cleanupDaemonFiles()
+        console.log("Cleaned up stale files (daemon not responding).")
+        return
+      }
+    } catch {
+      cleanupDaemonFiles()
+      console.log("Cleaned up stale files (daemon not responding).")
+      return
+    }
+  }
+
+  if (pid === null) {
+    // Port responded but no PID file. Unusual. Cleanup only.
+    cleanupDaemonFiles()
+    console.log("Daemon found but no PID file. Cleaned up.")
+    return
+  }
+
+  if (!isProcessAlive(pid)) {
+    cleanupDaemonFiles()
+    console.log(`Daemon (PID ${pid}) is not running. Cleaned up stale files.`)
+    return
+  }
+
+  console.log(`Stopping daemon (PID ${pid})...`)
+  try {
+    process.kill(pid, "SIGTERM")
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`Failed to send SIGTERM: ${msg}`)
+    process.exit(1)
+  }
+
+  // Poll for process exit, up to 5 seconds. 100ms interval is fine —
+  // no need to busy-wait tighter.
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) {
+      cleanupDaemonFiles()
+      console.log("Stopped.")
+      return
+    }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+
+  console.error(`Daemon (PID ${pid}) did not exit within 5s.`)
+  console.error(`Try: kill -9 ${pid}`)
+  process.exit(1)
+}
+
+async function cmdStatus(): Promise<void> {
+  const probe = await probeDaemon()
+  if (!probe) {
+    console.log("Daemon: not running")
+    return
+  }
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${probe.port}/api/status`)
+    if (!res.ok) {
+      console.error(`Daemon responded with status ${res.status}`)
+      process.exit(1)
+    }
+    const data = (await res.json()) as ServerStatus
+    console.log(`Daemon: running on port ${probe.port}`)
+    console.log(`  Watcher:    ${data.watcher}`)
+    console.log(`  Last scan:  ${data.lastScanAt ?? "never"}`)
+    console.log(`  Scan count: ${data.scanCount}`)
+    if (data.lastDurationMs !== null) {
+      console.log(`  Duration:   ${data.lastDurationMs}ms`)
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`Failed to query daemon: ${msg}`)
+    process.exit(1)
+  }
 }
 
 function printUsage(): void {
@@ -213,6 +347,8 @@ Usage:
   varch search <query>              Search indexed symbols
   varch impact <symbol> [--depth N] Show what calls a symbol (default depth: 3)
   varch serve                       Start local HTTP daemon on ephemeral port
+  varch stop                        Stop the running daemon
+  varch status                      Show daemon status
 `)
 }
 
