@@ -19,6 +19,7 @@ A local-first code intelligence tool for legacy and unfamiliar codebases.
 - Two-pass scan: symbols first, then edges - resolves forward references correctly
 - 33 passing tests
 - `npm run accuracy` reports precision/recall on a hand-labeled fixture (100% baseline)
+- MCP server - exposes search, impact, and status as tools for Cursor / VS Code / Claude Desktop
 
 ## Install
 
@@ -74,9 +75,54 @@ The daemon port is written to `.archeologist/port` on startup. Any tool can
 read that file to discover the running daemon. The process ID is written to
 `.archeologist/pid` for `varch stop` to use.
 
+## Using with Cursor / Claude Desktop (MCP)
+
+varch exposes its index to AI hosts via the Model Context Protocol (MCP). 
+To use it, you need to tell your AI host how to launch the varch MCP server.
+
+**Prerequisite:** You must have run `npm run build` in this repo, and `varch serve` must be running in your project directory.
+
+### For Cursor
+
+1. Create a file at `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for global access).
+2. Add the following configuration, **replacing `/absolute/path/to/voltroniq-arch` with the actual path to this repository**:
+
+    ```json
+    {
+      "mcpServers": {
+        "varch": {
+          "command": "node",
+          "args": ["/absolute/path/to/voltroniq-arch/dist/mcp-server.js"],
+          "env": {
+            "VARCH_ROOT": "/absolute/path/to/your/project"
+          }
+        }
+      }
+    }
+    ```
+
+Tools exposed: `varch_search`, `varch_impact`, `varch_status`.
+
+### For Windows / WSL Users (Important)
+
+If you are running Cursor as a Windows application but your code lives inside WSL (e.g., `/mnt/c/...`), you **must** use Windows-style paths with double backslashes in the JSON file. WSL paths will fail:
+
+    ```json
+    {
+      "mcpServers": {
+        "varch": {
+          "command": "node",
+          "args": ["C:\\path\\to\\voltroniq-arch\\dist\\mcp-server.js"],
+          "env": {
+            "VARCH_ROOT": "C:\\path\\to\\your\\project"
+          }
+        }
+      }
+    }
+    ```
+
 ## What's coming
 
-- MCP server for Cursor / Claude Desktop
 - Import-aware resolution (promotes `likely` -> `exact` where provable)
 - Python and additional language support
 

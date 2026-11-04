@@ -6,7 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Pre-alpha development. First public release (v0.1.0) targeted once the MCP server ships.
+### Added
+- (Nothing yet)
+
+## [0.1.0] - 2026-11-04
+
+Pre-alpha release. Parser, indexer, search, impact analysis, local HTTP daemon, and MCP server.
 
 ### Added
 
@@ -31,6 +36,10 @@ Pre-alpha development. First public release (v0.1.0) targeted once the MCP serve
   - `unknown` - callee not in the index (external call)
 - Two-pass scan: symbols extracted first, then edges resolved. Enables forward-reference resolution - a caller in `file-a.ts` can resolve a callee defined in `file-z.ts` scanned later.
 - Parser supports JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`) and TypeScript (`.ts`, `.tsx`) via separate grammars
+- MCP server (`dist/mcp-server.js`): exposes the local index to MCP hosts (Cursor, VS Code, Claude Desktop) over stdio
+  - Tools: `varch_search` (symbol lookup), `varch_impact` (callers with confidence tiers), `varch_status` (watcher/index freshness)
+  - Forwards to the running daemon via `.archeologist/port`; project root set by `VARCH_ROOT`
+  - Returns readable `isError` results when the daemon isn't running, so the model can tell the user to start `varch serve`
 
 ### Fixed
 
@@ -56,15 +65,20 @@ Pre-alpha development. First public release (v0.1.0) targeted once the MCP serve
 - **Watcher fires on non-source changes.** Editing `README.md` triggers a re-scan that does nothing useful (the scan ignores non-source files). Minor inefficiency.
 - **`varch stop` PID reuse risk.** Before sending SIGTERM, `varch stop` verifies via `/health` that the daemon is actually alive. This mitigates the rare case where a stale PID was reused by an unrelated process. Low risk on modern Linux (PIDs take days to reuse).
 - **Pinned to chokidar v3.** v4, v5, and v6 removed glob support from the `ignored` option. Our watcher relies on glob patterns (`**/node_modules/**`) to skip directories. Upgrading requires rewriting the ignore logic with `picomatch` or an `ignored` predicate.
+- **MCP server requires the daemon.** `varch serve` must be running for MCP tools to work; otherwise tools return a "daemon not running" error (by design). No auto-start.
+- **MCP tools return plain text, not structured content.** Models read it fine, but `structuredContent`/`outputSchema` could improve downstream tooling later.
+- **MCP tool list is 3 tools.** `search`, `impact`, `status` cover the core questions; `health`/`stats` are for humans and scripts, not the model.
 
 ### Planned
 
-- MCP server: query the local index from Cursor / Claude Desktop
 - Import-aware resolution: promotes `likely` -> `exact` where provable via import graph
 - File-level filtering: `--exclude "**/*.test.ts"` or config-file equivalent
 - SCIP ingestion: consume SCIP indexes for exact resolution
 - Python support
 - Incremental scanning: only re-parse changed files instead of full rebuild
 - Background daemon mode: detach from terminal, survive terminal close
-- Schema migration system (blocking for v0.1.0 public release)
+- Schema migration system (blocking for v1.0.0 stable release)
 - Go port of the parser (only if real users complain about performance at scale)
+
+[Unreleased]: https://github.com/voltroniq/voltroniq-arch/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/voltroniq/voltroniq-arch/releases/tag/v0.1.0
