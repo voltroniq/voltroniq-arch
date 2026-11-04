@@ -1,15 +1,15 @@
 # voltroniq-arch
 
 > **Status: Pre-alpha (active development).** Parser, indexer, search,
-> impact analysis, and the local HTTP daemon work for JavaScript and
-> TypeScript. MCP integration coming next.
+> impact analysis, local HTTP daemon, and MCP integration work for JavaScript and
+> TypeScript.
 
 A local-first code intelligence tool for legacy and unfamiliar codebases.
 
 ## What works today
 
 - Tree-sitter-based parsing of JavaScript and TypeScript files
-- Extracts functions, classes, methods, arrow functions, and function expressions (ignores strings/comments)
+- Extracts functions, classes, methods, arrow functions, function expressions, and prototype assignments (`app.set = function() {}`)
 - `varch scan` - indexes an entire folder into SQLite
 - `varch search` - fast symbol lookup via FTS5 trigram with LIKE fallback
 - `varch impact` - find direct and transitive callers (depth-limited)
@@ -17,7 +17,7 @@ A local-first code intelligence tool for legacy and unfamiliar codebases.
 - `varch stop` / `varch status` - manage the running daemon from any terminal
 - Confidence tiers: `likely` (unique match), `heuristic` (ambiguous), `unknown` (external)
 - Two-pass scan: symbols first, then edges - resolves forward references correctly
-- 33 passing tests
+- 34 passing tests
 - `npm run accuracy` reports precision/recall on a hand-labeled fixture (100% baseline)
 - MCP server - exposes search, impact, and status as tools for Cursor / VS Code / Claude Desktop
 
@@ -129,12 +129,12 @@ If you are running Cursor as a Windows application but your code lives inside WS
 ## Known limitations
 
 - JavaScript and TypeScript only (Python and others planned)
-- No import-aware resolution yet - "likely" means "unique name match," not "verified import"
+- No import-aware resolution yet - "likely" means "unique name match," not "verified import." AI agents may need to filter out false positives.
 - Transitive impact confidence reflects the last hop, not the weakest link in the chain
-- Test files (`.test.ts`, `.spec.ts`) are indexed alongside source - no file-level filtering yet
-- No incremental indexing - `varch scan` rebuilds the full index each run
-- `varch serve` runs in the foreground - closing the terminal stops the daemon. Use `varch stop` from another terminal to stop it without closing.
-- Polling overhead on WSL `/mnt/*` paths - move the project to `~/repos/` for faster inotify-based watching
+- Test files (.test.ts, .spec.ts) are indexed alongside source - no file-level filtering yet
+- No incremental indexing - varch scan rebuilds the full index each run
+- varch serve runs in the foreground - closing the terminal stops the daemon. Use varch stop from another terminal to stop it without closing.
+- Polling overhead on WSL /mnt/* paths - move the project to ~/repos/ for faster inotify-based watching
 
 ## Development
 
