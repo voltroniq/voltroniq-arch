@@ -71,4 +71,11 @@ describe("extractSymbols", () => {
     const symbols = getSymbols(source)
     expect(symbols.length).toBe(0)
   })
+
+  it("finds a function assigned to an object property", () => {
+    const symbols = getSymbols("app.set = function() { return 1 }")
+    expect(symbols.length).toBe(1)
+    expect(symbols[0]!.name).toBe("set")
+    expect(symbols[0]!.kind).toBe("function")
+  })
 })

@@ -40,6 +40,28 @@ function walk(node: Node, out: Symbol[]): void {
           line: nameNode.startPosition.row + 1,
         })
       }
+  } else if (node.type === "assignment_expression") {
+    // Handles `app.set = function() {}` or `module.exports = function() {}`
+    const left = node.childForFieldName("left")
+    const right = node.childForFieldName("right")
+    
+    // Only care if we are assigning a function
+    if (right?.type === "function_expression" || right?.type === "arrow_function") {
+      let nameNode = left
+      
+      // If it's `app.set`, the left is a member_expression. We want the property (`set`).
+      if (left?.type === "member_expression") {
+        nameNode = left.childForFieldName("property")
+      }
+      
+      if (nameNode) {
+        out.push({
+          name: nameNode.text,
+          kind: "function",
+          line: nameNode.startPosition.row + 1,
+        })
+      }
+    }
   } else if (node.type === "variable_declarator") {
       const nameNode = node.childForFieldName("name")
       const valueNode = node.childForFieldName("value")
