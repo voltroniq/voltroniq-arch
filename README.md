@@ -107,7 +107,7 @@ Tools exposed: `varch_search`, `varch_impact`, `varch_status`.
 
 If you are running Cursor as a Windows application but your code lives inside WSL (e.g., `/mnt/c/...`), you **must** use Windows-style paths with double backslashes in the JSON file. WSL paths will fail:
 
-    ```json
+  ```json
     {
       "mcpServers": {
         "varch": {
@@ -119,7 +119,7 @@ If you are running Cursor as a Windows application but your code lives inside WS
         }
       }
     }
-    ```
+  ```
 
 ## What's coming
 
