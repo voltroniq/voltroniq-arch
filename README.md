@@ -87,7 +87,7 @@ To use it, you need to tell your AI host how to launch the varch MCP server.
 1. Create a file at `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for global access).
 2. Add the following configuration, **replacing `/absolute/path/to/voltroniq-arch` with the actual path to this repository**:
 
-    ```json
+  ```json
     {
       "mcpServers": {
         "varch": {
@@ -99,7 +99,7 @@ To use it, you need to tell your AI host how to launch the varch MCP server.
         }
       }
     }
-    ```
+  ```
 
 Tools exposed: `varch_search`, `varch_impact`, `varch_status`.
 
