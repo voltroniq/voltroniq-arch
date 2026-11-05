@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS symbols (
 );
 
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
+CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts USING fts5(
   name,
