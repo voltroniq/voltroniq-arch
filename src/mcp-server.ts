@@ -154,23 +154,31 @@ function formatImpact(r: ImpactResponse): string {
   } else {
     if (r.direct.length > 0) {
       lines.push("")
-      lines.push(`Direct callers (${r.direct.length}):`)
-      for (const d of r.direct) {
+      lines.push(`Direct callers (${r.direct.length} total, showing top 15):`)
+      // Take the first 15
+      for (const d of r.direct.slice(0, 15)) {
         lines.push(
           `  ${d.source_name} (${d.source_path}:${d.call_line}) [${d.confidence}]`,
         )
+      }
+      if (r.direct.length > 15) {
+        lines.push(`  ... and ${r.direct.length - 15} more (ask for a specific file or use the CLI to see all).`)
       }
     }
     if (r.transitive.length > 0) {
       lines.push("")
       lines.push(
-        `Transitive callers (${r.transitive.length}, depth <= ${r.maxDepth}):`,
+        `Transitive callers (${r.transitive.length} total, showing top 15):`,
       )
-      for (const t of r.transitive) {
+      // Take the first 15
+      for (const t of r.transitive.slice(0, 15)) {
         lines.push(
           `  [d${t.depth}] ${t.source_name} via ${t.via} ` +
             `(${t.source_path}:${t.call_line}) [${t.confidence}]`,
         )
+      }
+      if (r.transitive.length > 15) {
+        lines.push(`  ... and ${r.transitive.length - 15} more.`)
       }
     }
   }

@@ -121,24 +121,21 @@ async function cmdImpact(symbol: string | undefined): Promise<void> {
 
   if (result.direct.length > 0) {
     console.log(`Direct callers (${result.direct.length}):`)
-    for (const d of result.direct) {
-      console.log(
-        `  ${d.source_name.padEnd(20)} ${d.source_path}:${d.call_line}  [${d.confidence}]`
-      )
+    // ONLY PRINT THE FIRST 15
+    for (const d of result.direct.slice(0, 15)) {
+      console.log(`  ${d.source_name.padEnd(20)} ${d.source_path}:${d.call_line}  [${d.confidence}]`)
     }
+    if (result.direct.length > 15) console.log(`  ... and ${result.direct.length - 15} more.`)
     console.log()
   }
 
   if (result.transitive.length > 0) {
-    console.log(
-      `Transitive callers (${result.transitive.length}, up to depth ${result.maxDepth}):`
-    )
-    for (const t of result.transitive) {
-      console.log(
-        `  [d${t.depth}] ${t.source_name.padEnd(16)} ${t.source_path}:${t.call_line}  via ${t.via}  [${t.confidence}]`
-      )
+    console.log(`Transitive callers (${result.transitive.length}, up to depth ${result.maxDepth}):`)
+    // ONLY PRINT THE FIRST 15
+    for (const t of result.transitive.slice(0, 15)) {
+      console.log(`  [d${t.depth}] ${t.source_name.padEnd(16)} ${t.source_path}:${t.call_line}  via ${t.via}  [${t.confidence}]`)
     }
-    console.log()
+    if (result.transitive.length > 15) console.log(`  ... and ${result.transitive.length - 15} more.`)
   }
 
   if (result.selfRecursive) {
