@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (Nothing yet)
 
+## [0.1.1] - 2026-11-05
+
+### Fixed
+- **CRITICAL:** Fixed an N+1 database query bottleneck and a WebAssembly memory leak that caused hangs and crashes on massive monorepos (tested successfully on Next.js with 25,807 files).
+- **CRITICAL:** Capped `varch impact` output to 15 results to prevent overflowing LLM context windows when used via the MCP server.
+
 ## [0.1.0] - 2026-11-04
 
 Pre-alpha release. Parser, indexer, search, impact analysis, local HTTP daemon, and MCP server.
@@ -80,5 +86,6 @@ Pre-alpha release. Parser, indexer, search, impact analysis, local HTTP daemon, 
 - Schema migration system (blocking for v1.0.0 stable release)
 - Go port of the parser (only if real users complain about performance at scale)
 
-[Unreleased]: https://github.com/voltroniq/voltroniq-arch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/voltroniq/voltroniq-arch/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/voltroniq/voltroniq-arch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/voltroniq/voltroniq-arch/releases/tag/v0.1.0
