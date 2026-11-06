@@ -6,8 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-06
+
 ### Added
-- (Nothing yet)
+- **SCIP Integration (Compiler-Grade Accuracy):** If a project has a `tsconfig.json`, `varch scan` will automatically run `scip-typescript` and upgrade `likely` edges to `exact` by matching compiler references. Pure JavaScript projects gracefully fall back to Tree-sitter-only resolution.
+
+### Fixed
+- SCIP symbol extraction now correctly ignores function parameters and local variables, preventing them from overwriting the actual function definitions.
+- Edge upgrades now match on symbol names and file IDs rather than exact line numbers, resolving conflicts between Tree-sitter and SCIP line offsets.
 
 ## [0.1.1] - 2026-11-05
 

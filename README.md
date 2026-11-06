@@ -15,7 +15,8 @@ A local-first code intelligence tool for legacy and unfamiliar codebases.
 - `varch impact` - find direct and transitive callers (depth-limited)
 - `varch serve` - local HTTP daemon with a file watcher (index updates on save)
 - `varch stop` / `varch status` - manage the running daemon from any terminal
-- Confidence tiers: `likely` (unique match), `heuristic` (ambiguous), `unknown` (external)
+- Confidence tiers: `exact` (SCIP/compiler-verified), `likely` (unique match), `heuristic` (ambiguous), unknown (external)
+- Hybrid Engine: Tree-sitter for fast universal parsing + SCIP for compiler-grade exact edges on TypeScript projects.
 - Two-pass scan: symbols first, then edges - resolves forward references correctly
 - 34 passing tests
 - `npm run accuracy` reports precision/recall on a hand-labeled fixture (100% baseline)
@@ -50,16 +51,16 @@ A local-first code intelligence tool for legacy and unfamiliar codebases.
 
 Example output:
 
-    $ varch impact stringReplaceAll
+    $ varch impact openDb
 
-    Impact analysis for "stringReplaceAll"
-    ======================================
+    Impact analysis for "openDb"
+    ============================
 
-    Direct callers (1):
-      applyStyle           source/index.js:216  [likely]
-
-    Transitive callers (1, up to depth 3):
-      [d2] builder          source/index.js:178  via applyStyle  [likely]
+    Direct callers (4):
+      cmdImpact            src/index.ts:98   [exact]
+      cmdSearch            src/index.ts:69   [exact]
+      cmdServe             src/index.ts:161  [exact]
+      scanDirectory        src/scan.ts:177   [exact]
 
 ## HTTP API
 
@@ -129,7 +130,7 @@ If you are running Cursor as a Windows application but your code lives inside WS
 ## Known limitations
 
 - JavaScript and TypeScript only (Python and others planned)
-- No import-aware resolution yet - "likely" means "unique name match," not "verified import." AI agents may need to filter out false positives.
+- SCIP accuracy requires a valid tsconfig.json. Pure JavaScript projects (or monorepos without a root tsconfig) will fall back to Tree-sitter name-matching (likely/heuristic).
 - Transitive impact confidence reflects the last hop, not the weakest link in the chain
 - Test files (.test.ts, .spec.ts) are indexed alongside source - no file-level filtering yet
 - No incremental indexing - varch scan rebuilds the full index each run
