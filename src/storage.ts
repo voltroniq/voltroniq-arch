@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS symbols (
   name TEXT NOT NULL,
   kind TEXT NOT NULL,
   line INTEGER NOT NULL,
+  scip_id TEXT UNIQUE,
   FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE
 );
 
@@ -308,4 +309,44 @@ export function findSymbolsByName(db: DB, name: string): SymbolRef[] {
     FROM symbols
     WHERE name = ?
   `).all(name) as SymbolRef[]
+}
+
+export function updateSymbolScipId(db: DB, fileId: number, name: string, _line: number, scipId: string): number {
+  // Removed the line check. If SCIP says this function is in this file, 
+  // it's the same function Tree-sitter found.
+  const result = db.prepare(`
+    UPDATE symbols 
+    SET scip_id = ? 
+    WHERE file_id = ? AND name = ?
+  `).run(scipId, fileId, name)
+  
+  return result.changes
+}
+
+export function upgradeEdgeToExact(
+  db: DB,
+  fileId: number,
+  _line: number,
+  targetScipId: string
+): number {
+  const targetRow = db.prepare(`
+    SELECT id, name FROM symbols 
+    WHERE scip_id = ?
+  `).get(targetScipId) as { id: number, name: string } | undefined
+
+  if (!targetRow) return 0
+
+  // We remove the line check. If SCIP says "openDb is referenced in this file",
+  // we upgrade the likely edge for openDb in this file to exact.
+  const result = db.prepare(`
+    UPDATE edges
+    SET target_symbol_id = ?, confidence = 'exact'
+    WHERE target_symbol_name = ?
+      AND confidence != 'exact'
+      AND source_symbol_id IN (
+        SELECT id FROM symbols WHERE file_id = ?
+      )
+  `).run(targetRow.id, targetRow.name, fileId)
+
+  return result.changes
 }

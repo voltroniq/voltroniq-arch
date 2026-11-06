@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { runScipIndex } from "./scip.js"
 import { extractSymbols } from "./symbols.js"
 import { extractCalls } from "./calls.js"
 import { findSourceFiles, languageFor } from "./scanner.js"
@@ -153,6 +154,12 @@ export async function scanInto(db: DB, root: string): Promise<ScanResult> {
   })
 
   runScan()
+
+  console.log(`[varch] Tree-sitter pass complete. Upgrading with SCIP...`)
+  const scipSymbols = await runScipIndex(db, root)
+  if (scipSymbols > 0) {
+    console.log(`[varch] Applied ${scipSymbols} exact SCIP symbol IDs.`)
+  }
 
   return {
     filesIndexed,
