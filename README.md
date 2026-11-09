@@ -9,16 +9,16 @@ A local-first code intelligence tool for legacy and unfamiliar codebases.
 ## What works today
 
 - Tree-sitter-based parsing of JavaScript and TypeScript files
-- Extracts functions, classes, methods, arrow functions, function expressions, and prototype assignments (`app.set = function() {}`)
-- `varch scan` - indexes an entire folder into SQLite
+- Extracts functions, classes, methods, arrow functions, function expressions, prototype assignments, and `new ClassName()` constructor calls
+- `varch scan` - indexes an entire folder into SQLite (ignores `.test.`, `.spec.`, and `.min.js` by default)
 - `varch search` - fast symbol lookup via FTS5 trigram with LIKE fallback
 - `varch impact` - find direct and transitive callers (depth-limited)
 - `varch serve` - local HTTP daemon with a file watcher (index updates on save)
 - `varch stop` / `varch status` - manage the running daemon from any terminal
-- Confidence tiers: `exact` (SCIP/compiler-verified), `likely` (unique match), `heuristic` (ambiguous), unknown (external)
-- Hybrid Engine: Tree-sitter for fast universal parsing + SCIP for compiler-grade exact edges on TypeScript projects.
-- Two-pass scan: symbols first, then edges - resolves forward references correctly
-- 34 passing tests
+- Confidence tiers: `exact` (SCIP/compiler-verified), `likely` (unique match), `heuristic` (ambiguous), `unknown` (external)
+- **Hybrid Engine:** Tree-sitter for fast universal parsing + async SCIP for compiler-grade exact edges on TypeScript projects without blocking the server.
+- Two-pass scan: symbols first, then edges - resolves forward references correctly and matches exact caller lines.
+- 39 passing tests
 - `npm run accuracy` reports precision/recall on a hand-labeled fixture (100% baseline)
 - MCP server - exposes search, impact, and status as tools for Cursor / VS Code / Claude Desktop
 
@@ -88,25 +88,25 @@ To use it, you need to tell your AI host how to launch the varch MCP server.
 1. Create a file at `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for global access).
 2. Add the following configuration, **replacing `/absolute/path/to/voltroniq-arch` with the actual path to this repository**:
 
-  ```json
-    {
-      "mcpServers": {
-        "varch": {
-          "command": "node",
-          "args": ["/absolute/path/to/voltroniq-arch/dist/mcp-server.js"],
-          "env": {
-            "VARCH_ROOT": "/absolute/path/to/your/project"
-          }
-        }
+```json
+{
+  "mcpServers": {
+    "varch": {
+      "command": "node",
+      "args": ["/absolute/path/to/voltroniq-arch/dist/mcp-server.js"],
+      "env": {
+        "VARCH_ROOT": "/absolute/path/to/your/project"
       }
     }
-  ```
+  }
+}
+```
 
 Tools exposed: `varch_search`, `varch_impact`, `varch_status`.
 
 ### For Windows / WSL Users (Important)
 
-If you are running Cursor as a Windows application but your code lives inside WSL (e.g., `/mnt/c/...`), you **must** use Windows-style paths with double backslashes in the JSON file. WSL paths will fail:
+If you are running Cursor as a Windows application but your code lives inside WSL (e.g., /mnt/c/...), you must use Windows-style paths with double backslashes in the JSON file. WSL paths will fail:
 
   ```json
     {
@@ -124,19 +124,17 @@ If you are running Cursor as a Windows application but your code lives inside WS
 
 ## What's coming
 
-- Import-aware resolution (promotes `likely` -> `exact` where provable)
 - Python and additional language support
+- Schema migrations
 
 ## Known limitations
 
 - JavaScript and TypeScript only (Python and others planned)
-- SCIP accuracy requires a valid tsconfig.json. Pure JavaScript projects (or monorepos without a root tsconfig) will fall back to Tree-sitter name-matching (likely/heuristic).
+- exact edges are rare on pure JavaScript. SCIP works best with modern TypeScript and valid tsconfig.json files. On Express (plain JS), 2% of in-repo edges were exact. On this repo (TypeScript), 81% were. Likely causes (not yet investigated): dynamic property assignments, variables, and missing type definitions in legacy JS.
 - Transitive impact confidence reflects the last hop, not the weakest link in the chain
-- Test files (.test.ts, .spec.ts) are indexed alongside source - no file-level filtering yet
 - No incremental indexing - varch scan rebuilds the full index each run
 - varch serve runs in the foreground - closing the terminal stops the daemon. Use varch stop from another terminal to stop it without closing.
 - Polling overhead on WSL /mnt/* paths - move the project to ~/repos/ for faster inotify-based watching
-- **`exact` edges are rare on pure JavaScript.** SCIP works best with modern TypeScript and valid `tsconfig.json` files. On older CommonJS JavaScript projects (like Express), dynamic property assignments, missing type definitions, and `new` expressions prevent the TypeScript compiler from resolving calls. Expect 2-5% `exact` edges on legacy JS, versus 80%+ on TypeScript.
 
 ## Development
 

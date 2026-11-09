@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-09
+
+### Added
+- **Constructor Tracking:** `varch impact` now tracks `new ClassName()` instantiations, so you can see who creates a class.
+- **Shared Ignore Rules:** Extracted `SKIP_DIRS` and extensions into `src/constants.ts`. Test files (`.test.ts`, `.spec.ts`) and minified bundles are now skipped by default to reduce graph noise.
+
+### Fixed
+- **Daemon Blocking:** Switched SCIP execution from synchronous (`execFileSync`) to async (`execFile`). The daemon's HTTP server and file watcher will no longer freeze during compiler indexing.
+- **Security (DNS Rebinding):** The local HTTP server now validates the `Host` header, rejecting requests that don't originate from `localhost` or `127.0.0.1`.
+- **Caller Ambiguity:** `scan` now tracks the exact definition line of the caller (`callerLine`). This prevents calls inside `ClassB.save()` from being incorrectly attributed to `ClassA.save()`.
+- **Tree-sitter Parsing:** Added support for `View.prototype.lookup = function() {}` assignment expressions in the call extractor.
+
 ## [0.2.0] - 2026-11-06
 
 ### Added
@@ -42,7 +54,7 @@ Pre-alpha release. Parser, indexer, search, impact analysis, local HTTP daemon, 
 - Accuracy measurement: `npm run accuracy` reports precision/recall on a hand-labeled fixture
 - `VARCH_DB` env var: allows placing the index outside the scanned directory (useful for testing on external repos)
 - Confidence tiers on edges:
-  - `exact` - reserved for future import-aware resolution (not yet emitted)
+  - `exact` - compiler-verified via SCIP
   - `likely` - callee name uniquely matches one symbol in the index
   - `heuristic` - callee name matches multiple symbols (ambiguous)
   - `unknown` - callee not in the index (external call)
@@ -66,7 +78,6 @@ Pre-alpha release. Parser, indexer, search, impact analysis, local HTTP daemon, 
 - **JavaScript and TypeScript only.** Python, Go, C++, and others are planned.
 - **No import-aware resolution.** `likely` means "unique name match in the index," not "verified via import graph." This is why `exact` never appears in practice yet.
 - **Transitive impact confidence reflects the last hop, not the weakest link.**
-- **Test files (`.test.ts`, `.spec.ts`) are indexed alongside source.** No file-level include/exclude filtering yet.
 - **No incremental indexing.** `varch scan` clears and rebuilds the full index each run.
 - **Anonymous arrow functions attribute calls to the outer function.** The arrow has no name to attach calls to.
 - **Dynamically created methods are invisible to static analysis.** Varch reports only statically-declared symbols.
@@ -92,7 +103,8 @@ Pre-alpha release. Parser, indexer, search, impact analysis, local HTTP daemon, 
 - Schema migration system (blocking for v1.0.0 stable release)
 - Go port of the parser (only if real users complain about performance at scale)
 
-[Unreleased]: https://github.com/voltroniq/voltroniq-arch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/voltroniq/voltroniq-arch/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/voltroniq/voltroniq-arch/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/voltroniq/voltroniq-arch/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/voltroniq/voltroniq-arch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/voltroniq/voltroniq-arch/releases/tag/v0.1.0

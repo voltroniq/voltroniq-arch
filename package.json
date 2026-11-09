@@ -1,6 +1,6 @@
 {
   "name": "@voltroniq/arch",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local-first code intelligence for legacy and unfamiliar codebases.",
   "type": "module",
   "bin": {
