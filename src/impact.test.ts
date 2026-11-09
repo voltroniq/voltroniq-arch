@@ -146,4 +146,24 @@ describe("impactAnalysis", () => {
     const r = impactAnalysis(db, "openDb")
     expect(r.definitionsFound).toBe(2)
   })
+
+  it("distinguishes exact callers of same-named symbols", () => {
+    // Setup: Two files, each with a `save` method and a caller.
+    const f1 = insertFile(db, "/fake/a.ts", "typescript")
+    const saveA = insertSymbol(db, f1, "save", "method", 1)
+    const callerA = insertSymbol(db, f1, "callerA", "function", 5)
+    
+    const f2 = insertFile(db, "/fake/b.ts", "typescript")
+    const saveB = insertSymbol(db, f2, "save", "method", 1)
+    const callerB = insertSymbol(db, f2, "callerB", "function", 5)
+
+    // Make exact edges for both
+    insertEdge(db, callerA, "save", saveA, 6, "exact")
+    insertEdge(db, callerB, "save", saveB, 6, "exact")
+
+    // Impact on saveA specifically should ONLY return callerA
+    const r = impactAnalysis(db, "save", 3, saveA)
+    expect(r.direct.length).toBe(1)
+    expect(r.direct[0]!.source_name).toBe("callerA")
+  })
 })

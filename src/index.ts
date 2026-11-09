@@ -4,7 +4,7 @@
 // All the actual logic lives in scan.ts, storage.ts, symbols.ts.
 
 import { scanDirectory, scanInto } from "./scan.js"
-import { openDb, searchSymbols } from "./storage.js"
+import { openDb, searchSymbols, findSymbolsByName } from "./storage.js"
 import { impactAnalysis } from "./impact.js"
 import { startServer, type ServerStatus } from "./server.js"
 import { startWatcher } from "./watcher.js"
@@ -89,14 +89,16 @@ async function cmdImpact(symbol: string | undefined): Promise<void> {
     process.exit(1)
   }
 
-  // Minimal --depth parsing. Full flag parsing (yargs/commander) is
-  // overkill for one optional flag. Default depth is 3.
   const depthIdx = process.argv.indexOf("--depth")
-  const maxDepth =
-    depthIdx > 0 ? Number(process.argv[depthIdx + 1]) || 3 : 3
+  const maxDepth = depthIdx > 0 ? Number(process.argv[depthIdx + 1]) || 3 : 3
 
   const db = openDb(DB_PATH)
-  const result = impactAnalysis(db, symbol, maxDepth)
+  
+  // NEW: Look up the symbol. If it's unique, we pass the ID to impactAnalysis.
+  const matches = findSymbolsByName(db, symbol)
+  const targetId = matches.length === 1 ? matches[0]!.id : null
+  
+  const result = impactAnalysis(db, symbol, maxDepth, targetId)
   db.close()
 
   if (result.definitionsFound === 0) {

@@ -94,4 +94,15 @@ describe("extractCalls", () => {
 }`)
     expect(calls[0]!.line).toBe(2)
   })
+
+  it("finds constructor calls via new_expression", () => {
+    const calls = getCalls(`
+      class Service {}
+      function create() {
+        return new Service()
+      }
+    `)
+    expect(calls.length).toBe(1)
+    expect(calls[0]!.callee).toBe("Service")
+  })
 })

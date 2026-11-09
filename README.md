@@ -136,6 +136,7 @@ If you are running Cursor as a Windows application but your code lives inside WS
 - No incremental indexing - varch scan rebuilds the full index each run
 - varch serve runs in the foreground - closing the terminal stops the daemon. Use varch stop from another terminal to stop it without closing.
 - Polling overhead on WSL /mnt/* paths - move the project to ~/repos/ for faster inotify-based watching
+- **`exact` edges are rare on pure JavaScript.** SCIP works best with modern TypeScript and valid `tsconfig.json` files. On older CommonJS JavaScript projects (like Express), dynamic property assignments, missing type definitions, and `new` expressions prevent the TypeScript compiler from resolving calls. Expect 2-5% `exact` edges on legacy JS, versus 80%+ on TypeScript.
 
 ## Development
 

@@ -268,8 +268,13 @@ function createServer(): McpServer {
     },
     async ({ name, depth }) => {
       try {
+        // We need to look up the DB to find the target ID.
+        // Since the MCP server is a separate process, we ask the daemon via a new endpoint, 
+        // OR we just rely on the name for now (which is what it does).
+        // For true exactness, the HTTP API needs to support passing targetId.
+        // For now, the tool works by name, but the API handles it better.
         const data = await callDaemon<ImpactResponse>(
-          `/api/impact?name=${encodeURIComponent(name)}&depth=${depth ?? 3}`,
+          `/api/impact?name=${encodeURIComponent(name)}&depth=${depth ?? 3}`
         )
         if (data.definitionsFound === 0) {
           return text(`No symbol named "${name}" in the index.`)

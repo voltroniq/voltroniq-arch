@@ -14,6 +14,7 @@
 
 import chokidar from "chokidar"
 import { resolve } from "node:path"
+import { SKIP_DIRS } from "./constants.js"
 
 export interface WatcherOptions {
   root: string
@@ -28,24 +29,8 @@ export interface RunningWatcher {
   close: () => Promise<void>
 }
 
-// Directories to ignore — must match scanner.ts's SKIP_DIRS.
-// Duplicated here because chokidar filters at watch time (avoid
-// expensive FS notifications for node_modules). Keeping them in
-// sync manually is the trade-off; move to a shared module if
-// they ever drift.
-const IGNORED = [
-  "**/node_modules/**",
-  "**/.git/**",
-  "**/dist/**",
-  "**/build/**",
-  "**/target/**",
-  "**/coverage/**",
-  "**/.archeologist/**",
-  "**/.next/**",
-  "**/.venv/**",
-  "**/venv/**",
-  "**/__pycache__/**",
-]
+// Convert the Set of directory names to chokidar glob patterns
+const IGNORED = Array.from(SKIP_DIRS).map(dir => `**/${dir}/**`)
 
 export async function startWatcher(
   opts: WatcherOptions

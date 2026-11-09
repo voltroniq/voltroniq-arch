@@ -1,40 +1,15 @@
+// src/scanner.ts
+//
 // Walks a directory tree and returns all source files we know how to parse.
 // This module doesn't parse anything — it only finds files. Parsing lives in
 // symbols.ts; storage lives in storage.ts. Each module does one thing.
 
 import { readdirSync } from "node:fs"
 import { join, extname } from "node:path"
-
-// Directories to skip entirely. If we walk into these, we waste time and
-// pollute the index with third-party code. Add more as needed.
-const SKIP_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  "target",
-  "coverage",
-  ".archeologist",
-  ".next",
-  ".venv",
-  "venv",
-  "__pycache__",
-])
-
-// Which file extensions we know how to handle → what language name to store.
-// Adding a new language later means adding one line here + one grammar file.
-const LANGUAGE_BY_EXT: Record<string, string> = {
-  ".js": "javascript",
-  ".jsx": "javascript",
-  ".ts": "typescript",
-  ".tsx": "typescript",
-  ".mjs": "javascript",
-  ".cjs": "javascript",
-}
+import { SKIP_DIRS, SKIP_EXTENSIONS, LANGUAGE_BY_EXT } from "./constants.js"
 
 /**
- * Recursively walk `root` and return every source file path (absolute or
- * relative — whatever the caller passed in, joined with subdirectory names).
+ * Recursively walk `root` and return every source file path.
  */
 export function findSourceFiles(root: string): string[] {
   const out: string[] = []
@@ -62,6 +37,13 @@ function walk(dir: string, out: string[]): void {
       if (SKIP_DIRS.has(entry.name)) continue
       walk(fullPath, out)
     } else if (entry.isFile()) {
+      // Skip test files and minified bundles to reduce noise in the graph.
+      if (
+        entry.name.includes(".test.") || 
+        entry.name.includes(".spec.") || 
+        SKIP_EXTENSIONS.some(ext => entry.name.endsWith(ext))
+      ) continue
+
       // Only include files whose extension we recognize.
       if (extname(entry.name) in LANGUAGE_BY_EXT) {
         out.push(fullPath)

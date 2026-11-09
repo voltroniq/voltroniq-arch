@@ -19,6 +19,7 @@ import {
 } from "node:http"
 import { searchSymbols, type DB } from "./storage.js"
 import { impactAnalysis } from "./impact.js"
+import { findSymbolsByName } from "./storage.js"
 
 /**
  * Snapshot of the daemon's current state. Populated by cmdServe,
@@ -110,6 +111,19 @@ function handleRequest(
     return sendJson(res, 405, { error: "method not allowed" })
   }
 
+  // ── SECURITY FIX: DNS Rebinding Defense ──
+  // Reject requests that don't originate from localhost.
+  // req.socket.localPort dynamically gets the port the server is running on.
+  const host = req.headers.host
+  const localPort = req.socket.localPort
+  const expectedHost1 = `127.0.0.1:${localPort}`
+  const expectedHost2 = `localhost:${localPort}`
+  
+  if (host !== expectedHost1 && host !== expectedHost2) {
+    return sendJson(res, 403, { error: "Forbidden: Invalid Host header" })
+  }
+  // ────────────────────────────────────────
+
   // `new URL(path, base)` parses path + query. Base is required even
   // though it's unused for parsing — it lets relative paths resolve.
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`)
@@ -174,7 +188,12 @@ function handleImpact(db: DB, url: URL, res: ServerResponse): void {
     return sendJson(res, 400, { error: "missing required param: name" })
   }
   const depth = Number(url.searchParams.get("depth")) || 3
-  const result = impactAnalysis(db, name, depth)
+  
+  // NEW: Look up the ID. If unique, pass it.
+  const matches = findSymbolsByName(db, name)
+  const targetId = matches.length === 1 ? matches[0]!.id : null
+  
+  const result = impactAnalysis(db, name, depth, targetId)
   sendJson(res, 200, result)
 }
 

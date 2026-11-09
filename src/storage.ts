@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS edges (
   -- Line where the call appears (1-indexed). Distinct from source_line.
   line INTEGER NOT NULL DEFAULT 0,
   -- How confident we are in the resolution:
-  --   'exact'     — resolved to a unique symbol via import/scope (future work)
+  --   'exact'     — compiler-verified via SCIP
   --   'likely'    — target name matched exactly one symbol in the index
   --   'heuristic' — target name matched multiple symbols (ambiguous)
   --   'unknown'   — target could not be resolved at all
@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS edges (
 
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_symbol_id);
+-- Speeds up the SCIP edge upgrade query (filters by name and line).
+CREATE INDEX IF NOT EXISTS idx_edges_name_line ON edges(target_symbol_name, line);
 `
 
 // ─────────────────────────────────────────────────────────────────────
@@ -237,6 +239,7 @@ export function insertEdge(
 // Same shape for both so CLI display code doesn't branch on direction.
 // ─────────────────────────────────────────────────────────────────────
 export interface EdgeResult {
+  source_id: number         // for exact BFS deduplication
   source_name: string       // name of the caller
   source_path: string       // file the caller lives in
   source_line: number       // line the caller is defined at
@@ -251,9 +254,14 @@ export interface EdgeResult {
 // Queries edges by target_symbol_name (not id, so unresolved edges
 // still surface — you get "unknown caller calls openDb" too).
 // ─────────────────────────────────────────────────────────────────────
-export function dependents(db: DB, symbolName: string): EdgeResult[] {
+export function dependents(
+  db: DB, 
+  symbolName: string, 
+  targetId: number | null = null
+): EdgeResult[] {
   return db.prepare(`
     SELECT
+      src.id   AS source_id,
       src.name AS source_name,
       f.path   AS source_path,
       src.line AS source_line,
@@ -265,8 +273,9 @@ export function dependents(db: DB, symbolName: string): EdgeResult[] {
     JOIN symbols src ON src.id = e.source_symbol_id
     JOIN files   f   ON f.id   = src.file_id
     WHERE e.target_symbol_name = ?
+      AND (? IS NULL OR e.target_symbol_id IS NULL OR e.target_symbol_id = ?)
     ORDER BY src.name
-  `).all(symbolName) as EdgeResult[]
+  `).all(symbolName, targetId, targetId) as EdgeResult[]
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -311,42 +320,54 @@ export function findSymbolsByName(db: DB, name: string): SymbolRef[] {
   `).all(name) as SymbolRef[]
 }
 
-export function updateSymbolScipId(db: DB, fileId: number, name: string, _line: number, scipId: string): number {
-  // Removed the line check. If SCIP says this function is in this file, 
-  // it's the same function Tree-sitter found.
+export function updateSymbolScipId(db: DB, fileId: number, name: string, line: number, scipId: string): number {
+  // Use UPDATE OR IGNORE. If a function has overloads, SCIP might emit the
+  // same symbol string twice. The UNIQUE constraint would normally throw,
+  // rolling back the whole transaction and discarding all SCIP results.
+  // OR IGNORE silently skips the duplicate and keeps the first one.
   const result = db.prepare(`
-    UPDATE symbols 
+    UPDATE OR IGNORE symbols 
     SET scip_id = ? 
-    WHERE file_id = ? AND name = ?
-  `).run(scipId, fileId, name)
+    WHERE file_id = ? AND name = ? AND line = ?
+  `).run(scipId, fileId, name, line)
   
   return result.changes
 }
 
+// NEW: Funnel Outcomes for debugging
+export type UpgradeOutcome = "upgraded" | "no_target" | "no_edge" | "ambiguous"
+
 export function upgradeEdgeToExact(
   db: DB,
   fileId: number,
-  _line: number,
+  line: number,
   targetScipId: string
-): number {
+): UpgradeOutcome {
   const targetRow = db.prepare(`
     SELECT id, name FROM symbols 
     WHERE scip_id = ?
   `).get(targetScipId) as { id: number, name: string } | undefined
 
-  if (!targetRow) return 0
+  // If we don't have a symbol with this SCIP ID, we can't upgrade.
+  if (!targetRow) return "no_target"
 
-  // We remove the line check. If SCIP says "openDb is referenced in this file",
-  // we upgrade the likely edge for openDb in this file to exact.
-  const result = db.prepare(`
-    UPDATE edges
-    SET target_symbol_id = ?, confidence = 'exact'
-    WHERE target_symbol_name = ?
+  // Find the specific edge(s) on this line matching this name.
+  const rows = db.prepare(`
+    SELECT id FROM edges
+    WHERE line = ? AND target_symbol_name = ?
       AND confidence != 'exact'
-      AND source_symbol_id IN (
-        SELECT id FROM symbols WHERE file_id = ?
-      )
-  `).run(targetRow.id, targetRow.name, fileId)
+      AND source_symbol_id IN (SELECT id FROM symbols WHERE file_id = ?)
+  `).all(line, targetRow.name, fileId) as { id: number }[]
 
-  return result.changes
+  // If there are 0 or >1 matches, we don't know which one SCIP is referring to.
+  // Stay honest and leave it as 'likely'/'heuristic'.
+  if (rows.length === 0) return "no_edge"
+  if (rows.length > 1) return "ambiguous"
+
+  // We have exactly one match. Update it by ID.
+  db.prepare(`
+    UPDATE edges SET target_symbol_id = ?, confidence = 'exact' WHERE id = ?
+  `).run(targetRow.id, rows[0]!.id)
+  
+  return "upgraded"
 }
